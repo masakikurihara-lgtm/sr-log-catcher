@@ -8,7 +8,7 @@ from streamlit_autorefresh import st_autorefresh
 
 # ページ設定
 st.set_page_config(
-    page_title="SHOWROOM ライバーサポートツール",
+    page_title="SHOWROOM 配信ログ収集ツール",
     page_icon="🎤",
     layout="wide",
 )
@@ -245,10 +245,10 @@ def get_fan_list(room_id):
 
 # --- UI構築 ---
 
-st.markdown("<h1 style='font-size:2.5em;'>🎤 ライバーサポートツール</h1>", unsafe_allow_html=True)
-st.write("ライバーの配信中のコメント、ギフト、ファンリストをリアルタイムで追跡し、ログをダウンロードできます。")
+st.markdown("<h1 style='font-size:2.5em;'>🎤 SHOWROOM 配信ログ収集ツール</h1>", unsafe_allow_html=True)
+st.write("配信中のコメント、スペシャルギフト、ファンリストをリアルタイムで収集し、ログをダウンロードできます。")
 
-input_room_id = st.text_input("対象のルームIDを入力してください:", placeholder="例: 444545", key="room_id_input")
+input_room_id = st.text_input("対象のルームIDを入力してください:", placeholder="例: 481475", key="room_id_input")
 
 col1, col2 = st.columns([1, 4])
 with col1:
