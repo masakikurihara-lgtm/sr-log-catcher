@@ -88,7 +88,7 @@ CSS_STYLE = """
     color: #333333;
     padding: 1rem;
     border-left: 5px solid #4CAF50; /* Streamlitのsuccessカラー */
-    margin-bottom: 0 !important; /* 余白をなくす */
+    margin-bottom: -36px !important; /* 余白をなくす */
     margin-top: 0 !important; /* 余白をなくす */
 }
 </style>
