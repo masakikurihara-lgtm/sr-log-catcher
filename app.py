@@ -317,7 +317,8 @@ if st.session_state.is_tracking:
         
         st.markdown("---")
         st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
-        st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のギフトが蓄積されています。</p>", unsafe_allow_html=True)
+        # ファンリストの件数を追加して文言を修正
+        st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{len(st.session_state.fan_list)}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
 
         # コメント一覧表
         filtered_comments_df = [
@@ -361,7 +362,8 @@ if st.session_state.is_tracking:
                 'name_user_data': 'ユーザー名', 'name_gift_info': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'created_at': 'ギフト時間', 'user_id': 'ユーザーID'
             })
             st.markdown("### 🎁 ギフトログ一覧表")
-            st.dataframe(gift_df[['ギフト時間', 'ユーザー名', 'ユーザーID', 'ギフト名', '個数', 'ポイント']], use_container_width=True, hide_index=True)
+            # 表示順を「ギフト時間」「ユーザー名」「ギフト名」「個数」「ポイント」「ユーザーID」に変更
+            st.dataframe(gift_df[['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']], use_container_width=True, hide_index=True)
             csv_gift = gift_df[['ギフト時間', 'ユーザー名', 'ユーザーID', 'ギフト名', '個数', 'ポイント']].to_csv(index=False, encoding='utf-8-sig')
             st.download_button(
                 label="ギフトログをCSVでダウンロード",
@@ -388,9 +390,23 @@ if st.session_state.is_tracking:
             # 表示するカラムも同様に存在するもののみを選択
             display_columns = ['順位', 'レベル', 'ユーザー名', 'ポイント']
             final_display_columns = [col for col in display_columns if col in fan_df.columns]
-
+            
+            # `column_config` を使用して列幅を調整
+            column_config = {
+                "順位": st.column_config.NumberColumn("順位", help="ファンランキングの順位", width="small"),
+                "レベル": st.column_config.NumberColumn("レベル", help="ファンレベル", width="small"),
+                "ユーザー名": st.column_config.TextColumn("ユーザー名", help="SHOWROOMのユーザー名", width="large"),
+                "ポイント": st.column_config.NumberColumn("ポイント", help="獲得ポイント", format="%d", width="medium"),
+            }
+            
+            # ファンリストの画像に合わせて、表示される項目を調整
             st.markdown("### 🏆 ファンリスト一覧表")
-            st.dataframe(fan_df[final_display_columns], use_container_width=True, hide_index=True)
+            st.dataframe(
+                fan_df[final_display_columns], 
+                use_container_width=True, 
+                hide_index=True,
+                column_config=column_config
+            )
             csv_fan = fan_df[final_display_columns].to_csv(index=False, encoding='utf-8-sig')
             st.download_button(
                 label="ファンリストをCSVでダウンロード",
