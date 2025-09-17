@@ -35,13 +35,6 @@ CSS_STYLE = """
     overflow-y: scroll;
     padding-right: 15px;
 }
-.comment-item, .gift-item, .fan-item {
-    border-bottom: 1px solid #eee;
-    padding: 8px 0;
-}
-.comment-item:last-child, .gift-item:last-child, .fan-item:last-child {
-    border-bottom: none;
-}
 .comment-item-row, .gift-item-row, .fan-info-row {
     display: flex;
     align-items: center;
@@ -322,6 +315,7 @@ if st.session_state.is_tracking:
                                 </div>
                             </div>
                         </div>
+                        <hr style="border: none; border-top: 1px solid #eee; margin: 8px 0;">
                         """
                         st.markdown(html, unsafe_allow_html=True)
                 else:
@@ -370,6 +364,7 @@ if st.session_state.is_tracking:
                                 </div>
                             </div>
                         </div>
+                        <hr style="border: none; border-top: 1px solid #eee; margin: 8px 0;">
                         """
                         st.markdown(html, unsafe_allow_html=True)
                 else:
@@ -390,6 +385,7 @@ if st.session_state.is_tracking:
                                 </div>
                             </div>
                         </div>
+                        <hr style="border: none; border-top: 1px solid #eee; margin: 8px 0;">
                         """
                         st.markdown(html, unsafe_allow_html=True)
                 else:
