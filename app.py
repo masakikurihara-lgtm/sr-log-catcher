@@ -177,17 +177,28 @@ def get_gift_list(room_id):
         return {}
 
 def get_fan_list(room_id):
-    """ファンリストを取得"""
-    current_ym = datetime.datetime.now(JST).strftime("%Y%m")
-    url = f"{FAN_LIST_API_URL}?room_id={room_id}&ym={current_ym}"
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=5)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("users", [])
-    except requests.exceptions.RequestException as e:
-        st.warning(f"ルームID {room_id} のファンリスト取得中にエラーが発生しました。")
-        return []
+    """ファンリストを全量取得"""
+    all_users = []
+    page = 1
+    has_next = True
+    while has_next:
+        current_ym = datetime.datetime.now(JST).strftime("%Y%m")
+        url = f"{FAN_LIST_API_URL}?room_id={room_id}&ym={current_ym}&page={page}"
+        try:
+            response = requests.get(url, headers=HEADERS, timeout=5)
+            response.raise_for_status()
+            data = response.json()
+            users = data.get("users", [])
+            all_users.extend(users)
+            has_next = data.get("next_page", None) is not None
+            if has_next:
+                page += 1
+            else:
+                break
+        except requests.exceptions.RequestException as e:
+            st.warning(f"ルームID {room_id} のファンリスト取得中にエラーが発生しました。")
+            break
+    return all_users
 
 # --- UI構築 ---
 
@@ -299,6 +310,7 @@ if st.session_state.is_tracking:
             st.markdown("### 🏆 ファンリスト (リアルタイム)")
             with st.container(border=True, height=500):
                 if st.session_state.fan_list:
+                    # ファンリスト全量表示
                     for fan in st.session_state.fan_list:
                         html = f"""
                         <div class="fan-item">
@@ -399,7 +411,6 @@ if st.session_state.is_tracking:
                 "ポイント": st.column_config.NumberColumn("ポイント", help="獲得ポイント", format="%d", width="medium"),
             }
             
-            # ファンリストの画像に合わせて、表示される項目を調整
             st.markdown("### 🏆 ファンリスト一覧表")
             st.dataframe(
                 fan_df[final_display_columns], 
