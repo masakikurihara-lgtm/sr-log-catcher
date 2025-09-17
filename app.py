@@ -83,6 +83,14 @@ CSS_STYLE = """
     font-weight: bold;
     color: #555;
 }
+.tracking-success {
+    background-color: #e6f7e6; /* Streamlitのsuccessカラーに似た色 */
+    color: #333333;
+    padding: 1rem;
+    border-left: 5px solid #4CAF50; /* Streamlitのsuccessカラー */
+    margin-bottom: 0 !important; /* 余白をなくす */
+    margin-top: 0 !important; /* 余白をなくす */
+}
 </style>
 """
 st.markdown(CSS_STYLE, unsafe_allow_html=True)
@@ -271,7 +279,9 @@ if st.session_state.is_tracking:
     if target_room_info:
         room_name = target_room_info.get('room_name', None)
         display_name = room_name if room_name else f"ルームID {st.session_state.room_id}"
-        st.success(f"ルーム「{display_name}」の配信をトラッキング中です！")
+        
+        # 修正箇所: st.success()をカスタムHTMLに置き換え
+        st.markdown(f'<div class="tracking-success">ルーム「{display_name}」の配信をトラッキング中です！</div>', unsafe_allow_html=True)
         
         st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
         
@@ -283,7 +293,7 @@ if st.session_state.is_tracking:
         st.session_state.fan_list = fan_list
         st.session_state.total_fan_count = total_fan_count
 
-        st.markdown("---") # 修正箇所：この行をここに戻す
+        st.markdown("---")
         st.markdown("<h2 style='font-size:2em;'>📊 リアルタイム・ダッシュボード</h2>", unsafe_allow_html=True)
         st.markdown(f"**最終更新日時 (日本時間): {datetime.datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')}**")
         st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※約7秒ごとに自動更新されます。</p>", unsafe_allow_html=True)
@@ -392,7 +402,7 @@ if st.session_state.is_tracking:
                     st.info("ファンデータがありません。")
     else:
         st.warning("指定されたルームIDが見つからないか、現在配信中ではありません。")
-        st.session_state.is_tracking = False    
+        st.session_state.is_tracking = False
 
 st.markdown("---")
 st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
