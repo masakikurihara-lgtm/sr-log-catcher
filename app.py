@@ -270,6 +270,9 @@ if st.session_state.is_tracking:
         st.session_state.gift_list_map = get_gift_list(st.session_state.room_id)
         st.session_state.fan_list = get_fan_list(st.session_state.room_id)
 
+        # レベル10以上のファンのみをフィルタリング
+        filtered_fans = [fan for fan in st.session_state.fan_list if fan.get('level', 0) >= 10]
+
         st.markdown("---")
         st.markdown("<h2 style='font-size:2em;'>📊 リアルタイム・ダッシュボード</h2>", unsafe_allow_html=True)
         st.markdown(f"**最終更新日時 (日本時間): {datetime.datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')}**")
@@ -339,8 +342,6 @@ if st.session_state.is_tracking:
         with col_fan:
             st.markdown("### 🏆 ファンリスト (リアルタイム)")
             with st.container(border=True, height=500):
-                # レベル10以上のファンのみを表示
-                filtered_fans = [fan for fan in st.session_state.fan_list if fan.get('level', 0) >= 10]
                 if filtered_fans:
                     for fan in filtered_fans:
                         html = f"""
@@ -361,7 +362,7 @@ if st.session_state.is_tracking:
         st.markdown("---")
         st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
         # ファンリストの件数を追加して文言を修正
-        st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{len(st.session_state.fan_list)}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{len(filtered_fans)}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
 
         # コメント一覧表
         filtered_comments_df = [
@@ -428,12 +429,9 @@ if st.session_state.is_tracking:
         st.markdown("---")
 
         # ファンリスト一覧表
-        if st.session_state.fan_list:
-            fan_df = pd.DataFrame(st.session_state.fan_list)
+        if filtered_fans:
+            fan_df = pd.DataFrame(filtered_fans)
             
-            # レベル10以上のファンのみに絞る
-            fan_df = fan_df[fan_df['level'] >= 10].copy()
-
             # 存在しないカラム名を安全にリネーム
             rename_map = {'user_name': 'ユーザー名', 'level': 'レベル', 'point': 'ポイント'}
             if 'rank' in fan_df.columns:
