@@ -96,6 +96,8 @@ if "gift_list_map" not in st.session_state:
     st.session_state.gift_list_map = {}
 if 'onlives_data' not in st.session_state:
     st.session_state.onlives_data = {}
+if 'total_fan_count' not in st.session_state:
+    st.session_state.total_fan_count = 0
 
 # --- API連携関数 ---
 
@@ -191,10 +193,9 @@ def get_gift_list(room_id):
         st.error(f"ルームID {room_id} のギフトリスト取得中にエラーが発生しました: {e}")
         return {}
 
-@st.cache_data(ttl=1800) # 30分間キャッシュを保持
 def get_fan_list(room_id):
-    """ファンリストを全量取得"""
-    all_users_dict = {}
+    """ファンリストをレベル10以上になるまで取得"""
+    fan_list = []
     offset = 0
     limit = 50
     current_ym = datetime.datetime.now(JST).strftime("%Y%m")
@@ -215,10 +216,11 @@ def get_fan_list(room_id):
             if not users:
                 break
             
-            # user_idをキーとして辞書に追加し、重複を排除
+            # レベル10未満のユーザーが現れたらループを終了
             for user in users:
-                if 'user_id' in user:
-                    all_users_dict[user['user_id']] = user
+                if user.get('level', 0) < 10:
+                    return fan_list, total_user_count
+                fan_list.append(user)
             
             offset += len(users)
             
@@ -230,8 +232,7 @@ def get_fan_list(room_id):
             st.warning(f"ルームID {room_id} のファンリスト取得中にエラーが発生しました。")
             break
             
-    # 辞書の値をリストに変換して返す
-    return list(all_users_dict.values()), total_user_count
+    return fan_list, total_user_count
 
 # --- UI構築 ---
 
@@ -280,9 +281,6 @@ if st.session_state.is_tracking:
         fan_list, total_fan_count = get_fan_list(st.session_state.room_id)
         st.session_state.fan_list = fan_list
         st.session_state.total_fan_count = total_fan_count
-        
-        # レベル10以上のファンのみをフィルタリング
-        filtered_fans = [fan for fan in st.session_state.fan_list if fan.get('level', 0) >= 10]
 
         st.markdown("---")
         st.markdown("<h2 style='font-size:2em;'>📊 リアルタイム・ダッシュボード</h2>", unsafe_allow_html=True)
@@ -353,8 +351,8 @@ if st.session_state.is_tracking:
         with col_fan:
             st.markdown("### 🏆 ファンリスト (リアルタイム)")
             with st.container(border=True, height=500):
-                if filtered_fans:
-                    for fan in filtered_fans:
+                if st.session_state.fan_list:
+                    for fan in st.session_state.fan_list:
                         html = f"""
                         <div class="fan-item">
                             <div class="fan-info-row">
@@ -440,8 +438,8 @@ if st.session_state.is_tracking:
         st.markdown("---")
 
         # ファンリスト一覧表
-        if filtered_fans:
-            fan_df = pd.DataFrame(filtered_fans)
+        if st.session_state.fan_list:
+            fan_df = pd.DataFrame(st.session_state.fan_list)
             
             # 存在しないカラム名を安全にリネーム
             rename_map = {'user_name': 'ユーザー名', 'level': 'レベル', 'point': 'ポイント'}
