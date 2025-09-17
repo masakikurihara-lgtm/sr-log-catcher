@@ -219,13 +219,16 @@ input_room_id = st.text_input("対象のルームIDを入力してください:"
 col1, col2 = st.columns([1, 4])
 with col1:
     if col1.button("トラッキング開始", key="start_button"):
-        st.session_state.is_tracking = True
-        st.session_state.room_id = input_room_id
-        st.session_state.comment_log = []
-        st.session_state.gift_log = []
-        st.session_state.gift_list_map = {}
-        st.session_state.fan_list = []
-        st.rerun()
+        if input_room_id and input_room_id.isdigit():
+            st.session_state.is_tracking = True
+            st.session_state.room_id = input_room_id
+            st.session_state.comment_log = []
+            st.session_state.gift_log = []
+            st.session_state.gift_list_map = {}
+            st.session_state.fan_list = []
+            st.rerun()
+        else:
+            st.error("ルームIDを入力してください。")
 
 with col2:
     if col2.button("トラッキング停止", key="stop_button", disabled=not st.session_state.is_tracking):
@@ -337,7 +340,6 @@ if st.session_state.is_tracking:
         
         st.markdown("---")
         st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
-        # ファンリストの件数を追加して文言を修正
         st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{len(st.session_state.fan_list)}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
 
         # コメント一覧表
