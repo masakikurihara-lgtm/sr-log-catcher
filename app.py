@@ -13,7 +13,6 @@ st.set_page_config(
 )
 
 # 定数
-# ヘッダー情報をより一般的なブラウザに偽装
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -93,6 +92,8 @@ if "fan_list" not in st.session_state:
     st.session_state.fan_list = []
 if "gift_list_map" not in st.session_state:
     st.session_state.gift_list_map = {}
+if 'onlives_data' not in st.session_state:
+    st.session_state.onlives_data = {}
 
 # --- API連携関数 ---
 
@@ -123,9 +124,9 @@ def get_onlives_rooms():
             if room_id:
                 onlives[int(room_id)] = room
     except requests.exceptions.RequestException as e:
-        st.warning(f"配信情報取得中にエラーが発生しました: {e}")
+        st.error(f"配信情報取得中にエラーが発生しました: {e}")
     except (ValueError, AttributeError):
-        st.warning("配信情報のJSONデコードまたは解析に失敗しました。")
+        st.error("配信情報のJSONデコードまたは解析に失敗しました。")
     return onlives
 
 def get_and_update_log(log_type, room_id):
@@ -246,8 +247,10 @@ if st.session_state.is_tracking:
     target_room_info = onlives_data.get(int(st.session_state.room_id)) if st.session_state.room_id.isdigit() else None
     
     if target_room_info:
-        room_name = target_room_info.get('room_name', '不明なルーム名')
-        st.success(f"ルーム「{room_name}」の配信をトラッキング中です！")
+        room_name = target_room_info.get('room_name', None)
+        # ルーム名が取得できない場合はルームIDを表示
+        display_name = room_name if room_name else f"ルームID {st.session_state.room_id}"
+        st.success(f"ルーム「{display_name}」の配信をトラッキング中です！")
         
         st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
         
