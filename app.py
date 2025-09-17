@@ -13,7 +13,11 @@ st.set_page_config(
 )
 
 # 定数
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+# ヘッダー情報をより一般的なブラウザに偽装
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
+}
 JST = pytz.timezone('Asia/Tokyo')
 ONLIVES_API_URL = "https://www.showroom-live.com/api/live/onlives"
 COMMENT_API_URL = "https://www.showroom-live.com/api/live/comment_log"
