@@ -24,7 +24,6 @@ COMMENT_API_URL = "https://www.showroom-live.com/api/live/comment_log"
 GIFT_API_URL = "https://www.showroom-live.com/api/live/gift_log"
 GIFT_LIST_API_URL = "https://www.showroom-live.com/api/live/gift_list"
 FAN_LIST_API_URL = "https://www.showroom-live.com/api/active_fan/users"
-# 日本語の運営コメントも除外キーワードに追加
 SYSTEM_COMMENT_KEYWORDS = ["SHOWROOM Management", "Earn weekly glittery rewards!", "ウィークリーグリッター特典獲得中！", "SHOWROOM運営"]
 
 # CSSスタイル
@@ -44,7 +43,7 @@ CSS_STYLE = """
 }
 .comment-item-row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 10px;
 }
 .comment-avatar {
