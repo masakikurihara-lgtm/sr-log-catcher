@@ -239,15 +239,13 @@ if st.session_state.is_tracking:
         with col_comment:
             st.markdown("### 📝 コメントログ")
             comment_view = st.radio("表示形式", ["リスト", "一覧表"], key="comment_view")
-            # コンテナの枠を明確に表示
-            with st.container(border=True):
+            with st.container(border=True, height=500):
                 filtered_comments = [
                     log for log in st.session_state.comment_log 
                     if not any(keyword in log.get('comment', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
                 ]
                 if filtered_comments:
                     if comment_view == "リスト":
-                        st.markdown("<div class='dashboard-container'>", unsafe_allow_html=True)
                         for log in filtered_comments:
                             user_name = log.get('name', '匿名ユーザー')
                             comment_text = log.get('comment', '')
@@ -260,7 +258,6 @@ if st.session_state.is_tracking:
                             </div>
                             """
                             st.markdown(html, unsafe_allow_html=True)
-                        st.markdown("</div>", unsafe_allow_html=True)
                     else:
                         comment_df = pd.DataFrame(filtered_comments)
                         comment_df['created_at'] = pd.to_datetime(comment_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -275,11 +272,9 @@ if st.session_state.is_tracking:
         with col_gift:
             st.markdown("### 🎁 ギフトログ")
             gift_view = st.radio("表示形式", ["リスト", "一覧表"], key="gift_view")
-            # コンテナの枠を明確に表示
-            with st.container(border=True):
+            with st.container(border=True, height=500):
                 if st.session_state.gift_log and st.session_state.gift_list_map:
                     if gift_view == "リスト":
-                        st.markdown("<div class='dashboard-container'>", unsafe_allow_html=True)
                         for log in st.session_state.gift_log:
                             gift_info = st.session_state.gift_list_map.get(str(log.get('gift_id')), {})
                             if not gift_info:
@@ -309,7 +304,6 @@ if st.session_state.is_tracking:
                             </div>
                             """
                             st.markdown(html, unsafe_allow_html=True)
-                        st.markdown("</div>", unsafe_allow_html=True)
                     else:
                         gift_df = pd.DataFrame(st.session_state.gift_log)
                         gift_df['created_at'] = pd.to_datetime(gift_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -330,11 +324,9 @@ if st.session_state.is_tracking:
         with col_fan:
             st.markdown("### 🏆 ファンリスト")
             fan_view = st.radio("表示形式", ["リスト", "一覧表"], key="fan_view")
-            # コンテナの枠を明確に表示
-            with st.container(border=True):
+            with st.container(border=True, height=500):
                 if st.session_state.fan_list:
                     if fan_view == "リスト":
-                        st.markdown("<div class='dashboard-container'>", unsafe_allow_html=True)
                         for fan in st.session_state.fan_list:
                             html = f"""
                             <div class="fan-item">
@@ -348,7 +340,6 @@ if st.session_state.is_tracking:
                             </div>
                             """
                             st.markdown(html, unsafe_allow_html=True)
-                        st.markdown("</div>", unsafe_allow_html=True)
                     else:
                         fan_df = pd.DataFrame(st.session_state.fan_list)
                         fan_df = fan_df.rename(columns={
