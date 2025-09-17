@@ -442,14 +442,14 @@ if st.session_state.is_tracking:
             fan_df = pd.DataFrame(st.session_state.fan_list)
             
             # 存在しないカラム名を安全にリネーム
-            rename_map = {'user_name': 'ユーザー名', 'level': 'レベル', 'point': 'ポイント'}
+            rename_map = {'user_name': 'ユーザー名', 'level': 'レベル', 'point': 'ポイント', 'user_id': 'ユーザーID'}
             if 'rank' in fan_df.columns:
                 rename_map['rank'] = '順位'
             
             fan_df = fan_df.rename(columns=rename_map)
 
             # 表示するカラムも同様に存在するもののみを選択
-            display_columns = ['順位', 'レベル', 'ユーザー名', 'ポイント']
+            display_columns = ['順位', 'レベル', 'ユーザー名', 'ポイント', 'ユーザーID']
             final_display_columns = [col for col in display_columns if col in fan_df.columns]
             
             # `column_config` を使用して列幅を調整
@@ -458,6 +458,7 @@ if st.session_state.is_tracking:
                 "レベル": st.column_config.NumberColumn("レベル", help="ファンレベル", width="small"),
                 "ユーザー名": st.column_config.TextColumn("ユーザー名", help="SHOWROOMのユーザー名", width="large"),
                 "ポイント": st.column_config.NumberColumn("ポイント", help="獲得ポイント", format="%d", width="medium"),
+                "ユーザーID": st.column_config.NumberColumn("ユーザーID", help="SHOWROOMのユーザーID", width="medium")
             }
             
             st.markdown("### 🏆 ファンリスト一覧表")
