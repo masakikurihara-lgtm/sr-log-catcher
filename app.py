@@ -24,7 +24,8 @@ COMMENT_API_URL = "https://www.showroom-live.com/api/live/comment_log"
 GIFT_API_URL = "https://www.showroom-live.com/api/live/gift_log"
 GIFT_LIST_API_URL = "https://www.showroom-live.com/api/live/gift_list"
 FAN_LIST_API_URL = "https://www.showroom-live.com/api/active_fan/users"
-SYSTEM_COMMENT_KEYWORDS = ["SHOWROOM Management", "Earn weekly glittery rewards!"]
+# 日本語の運営コメントをSYSTEM_COMMENT_KEYWORDSに追加
+SYSTEM_COMMENT_KEYWORDS = ["SHOWROOM Management", "Earn weekly glittery rewards!", "ウィークリーグリッター特典獲得中！"]
 
 # CSSスタイル
 CSS_STYLE = """
@@ -190,6 +191,7 @@ def get_gift_list(room_id):
         st.error(f"ルームID {room_id} のギフトリスト取得中にエラーが発生しました: {e}")
         return {}
 
+@st.cache_data(ttl=3600)
 def get_fan_list(room_id):
     """ファンリストを全量取得"""
     all_users_dict = {}
