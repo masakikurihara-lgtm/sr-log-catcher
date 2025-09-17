@@ -42,12 +42,12 @@ CSS_STYLE = """
 .comment-item:last-child, .gift-item:last-child, .fan-item:last-child {
     border-bottom: none;
 }
-.comment-item-row {
+.comment-item-row, .gift-item-row, .fan-info-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
 }
-.comment-avatar, .gift-avatar {
+.comment-avatar, .gift-avatar, .fan-avatar {
     width: 30px;
     height: 30px;
     border-radius: 50%;
@@ -55,8 +55,10 @@ CSS_STYLE = """
 }
 .comment-content, .gift-content {
     flex-grow: 1;
+    display: flex;
+    flex-direction: column;
 }
-.comment-time {
+.comment-time, .gift-time {
     font-size: 0.8em;
     color: #888;
 }
@@ -71,6 +73,8 @@ CSS_STYLE = """
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-top: 4px;
+    margin-bottom: 4px;
 }
 .gift-image {
     width: 30px;
@@ -82,11 +86,6 @@ CSS_STYLE = """
 .highlight-60000 { background-color: #ffb2b2; }
 .highlight-100000 { background-color: #ff9999; }
 .highlight-300000 { background-color: #ff7f7f; }
-.fan-info-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
 .fan-level {
     font-weight: bold;
     color: #555;
@@ -332,10 +331,6 @@ if st.session_state.is_tracking:
             st.markdown("### 🎁 ギフトログ (リアルタイム)")
             with st.container(border=True, height=500):
                 if st.session_state.gift_log and st.session_state.gift_list_map:
-                    user_avatar_map = {
-                        str(comment.get('user_id')): comment.get('avatar_url')
-                        for comment in st.session_state.comment_log if comment.get('user_id')
-                    }
                     for log in st.session_state.gift_log:
                         gift_info = st.session_state.gift_list_map.get(str(log.get('gift_id')), {})
                         if not gift_info:
@@ -354,19 +349,26 @@ if st.session_state.is_tracking:
                         elif total_point >= 10000: highlight_class = "highlight-10000"
                         
                         gift_image_url = log.get('image', gift_info.get('image', ''))
-                        user_id_str = str(log.get('user_id'))
-                        avatar_url = user_avatar_map.get(user_id_str, DEFAULT_AVATAR)
+                        avatar_id = log.get('avatar_id', None)
+                        if avatar_id:
+                            avatar_url = f"https://static.showroom-live.com/image/avatar/{avatar_id}.png"
+                        else:
+                            avatar_url = DEFAULT_AVATAR
 
                         html = f"""
                         <div class="gift-item {highlight_class}">
-                            <div class="comment-time">{created_at}</div>
-                            <div class="gift-info-row">
+                            <div class="gift-item-row">
                                 <img src="{avatar_url}" class="gift-avatar" />
-                                <img src="{gift_image_url}" class="gift-image" />
-                                <span>×{gift_count}</span>
+                                <div class="gift-content">
+                                    <div class="gift-time">{created_at}</div>
+                                    <div class="gift-user">{user_name}</div>
+                                    <div class="gift-info-row">
+                                        <img src="{gift_image_url}" class="gift-image" />
+                                        <span>×{gift_count}</span>
+                                    </div>
+                                    <div>{gift_point} pt</div>
+                                </div>
                             </div>
-                            <div style="margin-top: 4px;">{gift_point} pt</div>
-                            <div>{user_name}</div>
                         </div>
                         """
                         st.markdown(html, unsafe_allow_html=True)
@@ -381,7 +383,7 @@ if st.session_state.is_tracking:
                         html = f"""
                         <div class="fan-item">
                             <div class="fan-info-row">
-                                <img src="https://static.showroom-live.com/image/avatar/{fan.get('avatar_id', 0)}.png?v=108" width="30" height="30" style="border-radius:50%;" />
+                                <img src="https://static.showroom-live.com/image/avatar/{fan.get('avatar_id', 0)}.png?v=108" class="fan-avatar" />
                                 <div>
                                     <div class="fan-level">Lv. {fan.get('level', 0)}</div>
                                     <div>{fan.get('user_name', '不明なユーザー')}</div>
