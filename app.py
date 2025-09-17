@@ -25,6 +25,7 @@ GIFT_API_URL = "https://www.showroom-live.com/api/live/gift_log"
 GIFT_LIST_API_URL = "https://www.showroom-live.com/api/live/gift_list"
 FAN_LIST_API_URL = "https://www.showroom-live.com/api/active_fan/users"
 SYSTEM_COMMENT_KEYWORDS = ["SHOWROOM Management", "Earn weekly glittery rewards!", "ウィークリーグリッター特典獲得中！", "SHOWROOM運営"]
+DEFAULT_AVATAR = "https://static.showroom-live.com/image/avatar/default_avatar.png"
 
 # CSSスタイル
 CSS_STYLE = """
@@ -46,20 +47,20 @@ CSS_STYLE = """
     align-items: center;
     gap: 10px;
 }
-.comment-avatar {
+.comment-avatar, .gift-avatar {
     width: 30px;
     height: 30px;
     border-radius: 50%;
     object-fit: cover;
 }
-.comment-content {
+.comment-content, .gift-content {
     flex-grow: 1;
 }
 .comment-time {
     font-size: 0.8em;
     color: #888;
 }
-.comment-user {
+.comment-user, .gift-user {
     font-weight: bold;
     color: #333;
 }
@@ -331,6 +332,10 @@ if st.session_state.is_tracking:
             st.markdown("### 🎁 ギフトログ (リアルタイム)")
             with st.container(border=True, height=500):
                 if st.session_state.gift_log and st.session_state.gift_list_map:
+                    user_avatar_map = {
+                        str(comment.get('user_id')): comment.get('avatar_url')
+                        for comment in st.session_state.comment_log if comment.get('user_id')
+                    }
                     for log in st.session_state.gift_log:
                         gift_info = st.session_state.gift_list_map.get(str(log.get('gift_id')), {})
                         if not gift_info:
@@ -349,14 +354,19 @@ if st.session_state.is_tracking:
                         elif total_point >= 10000: highlight_class = "highlight-10000"
                         
                         gift_image_url = log.get('image', gift_info.get('image', ''))
+                        user_id_str = str(log.get('user_id'))
+                        avatar_url = user_avatar_map.get(user_id_str, DEFAULT_AVATAR)
+
                         html = f"""
                         <div class="gift-item {highlight_class}">
                             <div class="comment-time">{created_at}</div>
                             <div class="gift-info-row">
+                                <img src="{avatar_url}" class="gift-avatar" />
                                 <img src="{gift_image_url}" class="gift-image" />
                                 <span>×{gift_count}</span>
                             </div>
-                            <div>{user_name} ({gift_point}pt)</div>
+                            <div style="margin-top: 4px;">{gift_point} pt</div>
+                            <div>{user_name}</div>
                         </div>
                         """
                         st.markdown(html, unsafe_allow_html=True)
