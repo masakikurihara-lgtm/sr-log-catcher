@@ -138,16 +138,25 @@ def get_and_update_log(log_type, room_id):
         response.raise_for_status()
         new_log = response.json().get(f'{log_type}_log', [])
         
+        # 新しいログを既存のログに追加し、重複を排除
         existing_cache = st.session_state[f"{log_type}_log"]
-        existing_log_keys = {
-            (log.get('created_at'), log.get('name'), log.get('comment', log.get('gift_id')))
-            for log in existing_cache
-        }
-        for log in new_log:
-            log_key = (log.get('created_at'), log.get('name'), log.get('comment', log.get('gift_id')))
-            if log_key not in existing_log_keys:
-                existing_cache.append(log)
         
+        # 新しいログの`created_at`と`id`の組み合わせで重複をチェック
+        existing_log_ids = set()
+        for log in existing_cache:
+            log_id = log.get('created_at')
+            if log_id:
+                existing_log_ids.add(log_id)
+
+        added_count = 0
+        for log in new_log:
+            log_id = log.get('created_at')
+            if log_id and log_id not in existing_log_ids:
+                existing_cache.append(log)
+                existing_log_ids.add(log_id)
+                added_count += 1
+        
+        # タイムスタンプの降順でソート
         existing_cache.sort(key=lambda x: x.get('created_at', 0), reverse=True)
         return existing_cache
     except requests.exceptions.RequestException as e:
@@ -248,7 +257,6 @@ if st.session_state.is_tracking:
     
     if target_room_info:
         room_name = target_room_info.get('room_name', None)
-        # ルーム名が取得できない場合はルームIDを表示
         display_name = room_name if room_name else f"ルームID {st.session_state.room_id}"
         st.success(f"ルーム「{display_name}」の配信をトラッキング中です！")
         
