@@ -273,7 +273,7 @@ if st.session_state.is_tracking:
         display_name = room_name if room_name else f"ルームID {st.session_state.room_id}"
         st.success(f"ルーム「{display_name}」の配信をトラッキング中です！")
         
-        #st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
+        st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
         
         st.session_state.comment_log = get_and_update_log("comment", st.session_state.room_id)
         st.session_state.gift_log = get_and_update_log("gift", st.session_state.room_id)
@@ -392,8 +392,7 @@ if st.session_state.is_tracking:
                     st.info("ファンデータがありません。")
     else:
         st.warning("指定されたルームIDが見つからないか、現在配信中ではありません。")
-        st.session_state.is_tracking = False
-        st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")        
+        st.session_state.is_tracking = False    
 
 st.markdown("---")
 st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
