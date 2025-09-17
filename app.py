@@ -282,7 +282,7 @@ if st.session_state.is_tracking:
         display_name = room_name if room_name else f"ルームID {st.session_state.room_id}"
         
         # 修正箇所: st.success()をカスタムHTMLに置き換え
-        st.markdown(f'<div class="tracking-success">{display_name}の配信をトラッキング中です！</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="tracking-success">{display_name} の配信をトラッキング中です！</div>', unsafe_allow_html=True)
         
         st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
         
