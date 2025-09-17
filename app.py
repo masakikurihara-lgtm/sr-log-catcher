@@ -247,6 +247,7 @@ def get_fan_list(room_id):
 
 st.markdown("<h1 style='font-size:2.5em;'>🎤 SHOWROOM 配信ログ収集ツール</h1>", unsafe_allow_html=True)
 st.write("配信中のコメント、スペシャルギフト、ファンリストをリアルタイムで収集し、ログをダウンロードできます。")
+st.write("")
 
 input_room_id = st.text_input("対象のルームIDを入力してください:", placeholder="例: 481475", key="room_id_input")
 
