@@ -390,116 +390,115 @@ if st.session_state.is_tracking:
                         st.markdown(html, unsafe_allow_html=True)
                 else:
                     st.info("ファンデータがありません。")
-        
-        st.markdown("---")
-        st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
-        st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{st.session_state.total_fan_count}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
-
-        comment_cols = ['コメント時間', 'ユーザー名', 'コメント内容', 'ユーザーID']
-        gift_cols = ['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']
-        fan_cols = ['順位', 'レベル', 'ユーザー名', 'ポイント', 'ユーザーID']
-
-        # コメント一覧表
-        filtered_comments_df = [
-            log for log in st.session_state.comment_log 
-            if not any(keyword in log.get('name', '') or keyword in log.get('comment', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
-        ]
-        if filtered_comments_df:
-            comment_df = pd.DataFrame(filtered_comments_df)
-            comment_df['created_at'] = pd.to_datetime(comment_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
-            comment_df['user_id'] = [log.get('user_id', 'N/A') for log in filtered_comments_df]
-            comment_df = comment_df.rename(columns={
-                'name': 'ユーザー名', 'comment': 'コメント内容', 'created_at': 'コメント時間', 'user_id': 'ユーザーID'
-            })
-            st.markdown("### 📝 コメントログ一覧表")
-            st.dataframe(comment_df[comment_cols], use_container_width=True, hide_index=True)
-            
-            buffer = io.BytesIO()
-            comment_df[comment_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
-            buffer.seek(0)
-            st.download_button(
-                label="コメントログをCSVでダウンロード",
-                data=buffer,
-                file_name=f"comment_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-            )
-        else:
-            st.info("ダウンロードできるコメントがありません。")
-        
-        st.markdown("---")
-
-        # ギフト一覧表
-        if st.session_state.gift_log:
-            gift_df = pd.DataFrame(st.session_state.gift_log)
-            gift_df['created_at'] = pd.to_datetime(gift_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
-            
-            if st.session_state.gift_list_map:
-                gift_info_df = pd.DataFrame.from_dict(st.session_state.gift_list_map, orient='index')
-                gift_info_df.index = gift_info_df.index.astype(str)
-                
-                gift_df['gift_id'] = gift_df['gift_id'].astype(str)
-                gift_df = gift_df.set_index('gift_id').join(gift_info_df, on='gift_id', lsuffix='_user_data', rsuffix='_gift_info').reset_index()
-
-            gift_df = gift_df.rename(columns={
-                'name_user_data': 'ユーザー名', 'name_gift_info': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'created_at': 'ギフト時間', 'user_id': 'ユーザーID'
-            })
-            st.markdown("### 🎁 ギフトログ一覧表")
-            st.dataframe(gift_df[gift_cols], use_container_width=True, hide_index=True)
-            
-            buffer = io.BytesIO()
-            gift_df[gift_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
-            buffer.seek(0)
-            st.download_button(
-                label="ギフトログをCSVでダウンロード",
-                data=buffer,
-                file_name=f"gift_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-            )
-        else:
-            st.info("ダウンロードできるギフトがありません。")
-        
-        st.markdown("---")
-
-        # ファンリスト一覧表
-        if st.session_state.fan_list:
-            fan_df = pd.DataFrame(st.session_state.fan_list)
-            
-            rename_map = {'user_name': 'ユーザー名', 'level': 'レベル', 'point': 'ポイント', 'user_id': 'ユーザーID'}
-            if 'rank' in fan_df.columns:
-                rename_map['rank'] = '順位'
-            
-            fan_df = fan_df.rename(columns=rename_map)
-
-            final_fan_cols = [col for col in fan_cols if col in fan_df.columns]
-            
-            column_config = {
-                "順位": st.column_config.NumberColumn("順位", help="ファンランキングの順位", width="small"),
-                "レベル": st.column_config.NumberColumn("レベル", help="ファンレベル", width="small"),
-                "ユーザー名": st.column_config.TextColumn("ユーザー名", help="SHOWROOMのユーザー名", width="large"),
-                "ポイント": st.column_config.NumberColumn("ポイント", help="獲得ポイント", format="%d", width="medium"),
-                "ユーザーID": st.column_config.NumberColumn("ユーザーID", help="SHOWROOMのユーザーID", width="medium")
-            }
-            
-            st.markdown("### 🏆 ファンリスト一覧表")
-            st.dataframe(
-                fan_df[final_fan_cols], 
-                use_container_width=True, 
-                hide_index=True,
-                column_config=column_config
-            )
-            
-            buffer = io.BytesIO()
-            fan_df[final_fan_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
-            buffer.seek(0)
-            st.download_button(
-                label="ファンリストをCSVでダウンロード",
-                data=buffer,
-                file_name=f"fan_list_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-            )
-        else:
-            st.info("ダウンロードできるファンデータがありません。")
-
     else:
         st.warning("指定されたルームIDが見つからないか、現在配信中ではありません。")
         st.session_state.is_tracking = False
+
+st.markdown("---")
+st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
+st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{st.session_state.total_fan_count}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
+
+comment_cols = ['コメント時間', 'ユーザー名', 'コメント内容', 'ユーザーID']
+gift_cols = ['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']
+fan_cols = ['順位', 'レベル', 'ユーザー名', 'ポイント', 'ユーザーID']
+
+# コメント一覧表
+filtered_comments_df = [
+    log for log in st.session_state.comment_log 
+    if not any(keyword in log.get('name', '') or keyword in log.get('comment', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
+]
+if filtered_comments_df:
+    comment_df = pd.DataFrame(filtered_comments_df)
+    comment_df['created_at'] = pd.to_datetime(comment_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+    comment_df['user_id'] = [log.get('user_id', 'N/A') for log in filtered_comments_df]
+    comment_df = comment_df.rename(columns={
+        'name': 'ユーザー名', 'comment': 'コメント内容', 'created_at': 'コメント時間', 'user_id': 'ユーザーID'
+    })
+    st.markdown("### 📝 コメントログ一覧表")
+    st.dataframe(comment_df[comment_cols], use_container_width=True, hide_index=True)
+    
+    buffer = io.BytesIO()
+    comment_df[comment_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
+    buffer.seek(0)
+    st.download_button(
+        label="コメントログをCSVでダウンロード",
+        data=buffer,
+        file_name=f"comment_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv",
+    )
+else:
+    st.info("ダウンロードできるコメントがありません。")
+
+st.markdown("---")
+
+# ギフト一覧表
+if st.session_state.gift_log:
+    gift_df = pd.DataFrame(st.session_state.gift_log)
+    gift_df['created_at'] = pd.to_datetime(gift_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+    
+    if st.session_state.gift_list_map:
+        gift_info_df = pd.DataFrame.from_dict(st.session_state.gift_list_map, orient='index')
+        gift_info_df.index = gift_info_df.index.astype(str)
+        
+        gift_df['gift_id'] = gift_df['gift_id'].astype(str)
+        gift_df = gift_df.set_index('gift_id').join(gift_info_df, on='gift_id', lsuffix='_user_data', rsuffix='_gift_info').reset_index()
+
+    gift_df = gift_df.rename(columns={
+        'name_user_data': 'ユーザー名', 'name_gift_info': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'created_at': 'ギフト時間', 'user_id': 'ユーザーID'
+    })
+    st.markdown("### 🎁 ギフトログ一覧表")
+    st.dataframe(gift_df[gift_cols], use_container_width=True, hide_index=True)
+    
+    buffer = io.BytesIO()
+    gift_df[gift_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
+    buffer.seek(0)
+    st.download_button(
+        label="ギフトログをCSVでダウンロード",
+        data=buffer,
+        file_name=f"gift_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv",
+    )
+else:
+    st.info("ダウンロードできるギフトがありません。")
+
+st.markdown("---")
+
+# ファンリスト一覧表
+if st.session_state.fan_list:
+    fan_df = pd.DataFrame(st.session_state.fan_list)
+    
+    rename_map = {'user_name': 'ユーザー名', 'level': 'レベル', 'point': 'ポイント', 'user_id': 'ユーザーID'}
+    if 'rank' in fan_df.columns:
+        rename_map['rank'] = '順位'
+    
+    fan_df = fan_df.rename(columns=rename_map)
+
+    final_fan_cols = [col for col in fan_cols if col in fan_df.columns]
+    
+    column_config = {
+        "順位": st.column_config.NumberColumn("順位", help="ファンランキングの順位", width="small"),
+        "レベル": st.column_config.NumberColumn("レベル", help="ファンレベル", width="small"),
+        "ユーザー名": st.column_config.TextColumn("ユーザー名", help="SHOWROOMのユーザー名", width="large"),
+        "ポイント": st.column_config.NumberColumn("ポイント", help="獲得ポイント", format="%d", width="medium"),
+        "ユーザーID": st.column_config.NumberColumn("ユーザーID", help="SHOWROOMのユーザーID", width="medium")
+    }
+    
+    st.markdown("### 🏆 ファンリスト一覧表")
+    st.dataframe(
+        fan_df[final_fan_cols], 
+        use_container_width=True, 
+        hide_index=True,
+        column_config=column_config
+    )
+    
+    buffer = io.BytesIO()
+    fan_df[final_fan_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
+    buffer.seek(0)
+    st.download_button(
+        label="ファンリストをCSVでダウンロード",
+        data=buffer,
+        file_name=f"fan_list_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv",
+    )
+else:
+    st.info("ダウンロードできるファンデータがありません。")
