@@ -24,8 +24,8 @@ COMMENT_API_URL = "https://www.showroom-live.com/api/live/comment_log"
 GIFT_API_URL = "https://www.showroom-live.com/api/live/gift_log"
 GIFT_LIST_API_URL = "https://www.showroom-live.com/api/live/gift_list"
 FAN_LIST_API_URL = "https://www.showroom-live.com/api/active_fan/users"
-# 日本語の運営コメントをSYSTEM_COMMENT_KEYWORDSに追加
-SYSTEM_COMMENT_KEYWORDS = ["SHOWROOM Management", "Earn weekly glittery rewards!", "ウィークリーグリッター特典獲得中！"]
+# 日本語の運営コメントも除外キーワードに追加
+SYSTEM_COMMENT_KEYWORDS = ["SHOWROOM Management", "Earn weekly glittery rewards!", "ウィークリーグリッター特典獲得中！", "SHOWROOM運営"]
 
 # CSSスタイル
 CSS_STYLE = """
@@ -191,13 +191,15 @@ def get_gift_list(room_id):
         st.error(f"ルームID {room_id} のギフトリスト取得中にエラーが発生しました: {e}")
         return {}
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800) # 30分間キャッシュを保持
 def get_fan_list(room_id):
     """ファンリストを全量取得"""
     all_users_dict = {}
     offset = 0
     limit = 50
     current_ym = datetime.datetime.now(JST).strftime("%Y%m")
+    
+    total_user_count = 0
     
     while True:
         url = f"{FAN_LIST_API_URL}?room_id={room_id}&ym={current_ym}&offset={offset}&limit={limit}"
@@ -206,6 +208,9 @@ def get_fan_list(room_id):
             response.raise_for_status()
             data = response.json()
             users = data.get("users", [])
+            
+            if offset == 0 and "total_user_count" in data:
+                total_user_count = data["total_user_count"]
             
             if not users:
                 break
@@ -226,7 +231,7 @@ def get_fan_list(room_id):
             break
             
     # 辞書の値をリストに変換して返す
-    return list(all_users_dict.values())
+    return list(all_users_dict.values()), total_user_count
 
 # --- UI構築 ---
 
@@ -245,6 +250,7 @@ with col1:
             st.session_state.gift_log = []
             st.session_state.gift_list_map = {}
             st.session_state.fan_list = []
+            st.session_state.total_fan_count = 0
             st.rerun()
         else:
             st.error("ルームIDを入力してください。")
@@ -270,8 +276,11 @@ if st.session_state.is_tracking:
         st.session_state.comment_log = get_and_update_log("comment", st.session_state.room_id)
         st.session_state.gift_log = get_and_update_log("gift", st.session_state.room_id)
         st.session_state.gift_list_map = get_gift_list(st.session_state.room_id)
-        st.session_state.fan_list = get_fan_list(st.session_state.room_id)
-
+        
+        fan_list, total_fan_count = get_fan_list(st.session_state.room_id)
+        st.session_state.fan_list = fan_list
+        st.session_state.total_fan_count = total_fan_count
+        
         # レベル10以上のファンのみをフィルタリング
         filtered_fans = [fan for fan in st.session_state.fan_list if fan.get('level', 0) >= 10]
 
@@ -287,7 +296,7 @@ if st.session_state.is_tracking:
             with st.container(border=True, height=500):
                 filtered_comments = [
                     log for log in st.session_state.comment_log 
-                    if not any(keyword in log.get('comment', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
+                    if not any(keyword in log.get('name', '') or keyword in log.get('comment', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
                 ]
                 if filtered_comments:
                     for log in filtered_comments:
@@ -363,13 +372,13 @@ if st.session_state.is_tracking:
         
         st.markdown("---")
         st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
-        # ファンリストの件数を追加して文言を修正
-        st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{len(filtered_fans)}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
+        # ファンリストの件数を修正
+        st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{st.session_state.total_fan_count}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
 
         # コメント一覧表
         filtered_comments_df = [
             log for log in st.session_state.comment_log 
-            if not any(keyword in log.get('name', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
+            if not any(keyword in log.get('name', '') or keyword in log.get('comment', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
         ]
         if filtered_comments_df:
             comment_df = pd.DataFrame(filtered_comments_df)
