@@ -44,7 +44,7 @@ CSS_STYLE = """
 }
 .comment-item-row, .gift-item-row, .fan-info-row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 10px;
 }
 .comment-avatar, .gift-avatar, .fan-avatar {
