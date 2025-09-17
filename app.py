@@ -24,7 +24,6 @@ COMMENT_API_URL = "https://www.showroom-live.com/api/live/comment_log"
 GIFT_API_URL = "https://www.showroom-live.com/api/live/gift_log"
 GIFT_LIST_API_URL = "https://www.showroom-live.com/api/live/gift_list"
 FAN_LIST_API_URL = "https://www.showroom-live.com/api/active_fan/users"
-# 日本語の運営コメントも除外キーワードに追加
 SYSTEM_COMMENT_KEYWORDS = ["SHOWROOM Management", "Earn weekly glittery rewards!", "ウィークリーグリッター特典獲得中！", "SHOWROOM運営"]
 
 # CSSスタイル
@@ -370,8 +369,12 @@ if st.session_state.is_tracking:
         
         st.markdown("---")
         st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
-        # ファンリストの件数を修正
         st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{st.session_state.total_fan_count}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
+
+        # 表示・ダウンロード用カラムを定義
+        comment_cols = ['コメント時間', 'ユーザー名', 'コメント内容', 'ユーザーID']
+        gift_cols = ['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']
+        fan_cols = ['順位', 'レベル', 'ユーザー名', 'ポイント', 'ユーザーID']
 
         # コメント一覧表
         filtered_comments_df = [
@@ -386,11 +389,10 @@ if st.session_state.is_tracking:
                 'name': 'ユーザー名', 'comment': 'コメント内容', 'created_at': 'コメント時間', 'user_id': 'ユーザーID'
             })
             st.markdown("### 📝 コメントログ一覧表")
-            st.dataframe(comment_df[['コメント時間', 'ユーザー名', 'コメント内容', 'ユーザーID']], use_container_width=True, hide_index=True)
+            st.dataframe(comment_df[comment_cols], use_container_width=True, hide_index=True)
             
-            # CSVの文字化けを修正
             buffer = io.BytesIO()
-            comment_df[['コメント時間', 'ユーザー名', 'ユーザーID', 'コメント内容']].to_csv(buffer, index=False, encoding='utf-8-sig')
+            comment_df[comment_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
             buffer.seek(0)
             st.download_button(
                 label="コメントログをCSVでダウンロード",
@@ -419,12 +421,10 @@ if st.session_state.is_tracking:
                 'name_user_data': 'ユーザー名', 'name_gift_info': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'created_at': 'ギフト時間', 'user_id': 'ユーザーID'
             })
             st.markdown("### 🎁 ギフトログ一覧表")
-            # 表示順を「ギフト時間」「ユーザー名」「ギフト名」「個数」「ポイント」「ユーザーID」に変更
-            st.dataframe(gift_df[['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']], use_container_width=True, hide_index=True)
+            st.dataframe(gift_df[gift_cols], use_container_width=True, hide_index=True)
             
-            # CSVの文字化けを修正
             buffer = io.BytesIO()
-            gift_df[['ギフト時間', 'ユーザー名', 'ユーザーID', 'ギフト名', '個数', 'ポイント']].to_csv(buffer, index=False, encoding='utf-8-sig')
+            gift_df[gift_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
             buffer.seek(0)
             st.download_button(
                 label="ギフトログをCSVでダウンロード",
@@ -441,18 +441,14 @@ if st.session_state.is_tracking:
         if st.session_state.fan_list:
             fan_df = pd.DataFrame(st.session_state.fan_list)
             
-            # 存在しないカラム名を安全にリネーム
             rename_map = {'user_name': 'ユーザー名', 'level': 'レベル', 'point': 'ポイント', 'user_id': 'ユーザーID'}
             if 'rank' in fan_df.columns:
                 rename_map['rank'] = '順位'
             
             fan_df = fan_df.rename(columns=rename_map)
 
-            # 表示するカラムも同様に存在するもののみを選択
-            display_columns = ['順位', 'レベル', 'ユーザー名', 'ポイント', 'ユーザーID']
-            final_display_columns = [col for col in display_columns if col in fan_df.columns]
+            final_fan_cols = [col for col in fan_cols if col in fan_df.columns]
             
-            # `column_config` を使用して列幅を調整
             column_config = {
                 "順位": st.column_config.NumberColumn("順位", help="ファンランキングの順位", width="small"),
                 "レベル": st.column_config.NumberColumn("レベル", help="ファンレベル", width="small"),
@@ -463,15 +459,14 @@ if st.session_state.is_tracking:
             
             st.markdown("### 🏆 ファンリスト一覧表")
             st.dataframe(
-                fan_df[final_display_columns], 
+                fan_df[final_fan_cols], 
                 use_container_width=True, 
                 hide_index=True,
                 column_config=column_config
             )
             
-            # CSVの文字化けを修正
             buffer = io.BytesIO()
-            fan_df[final_display_columns].to_csv(buffer, index=False, encoding='utf-8-sig')
+            fan_df[final_fan_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
             buffer.seek(0)
             st.download_button(
                 label="ファンリストをCSVでダウンロード",
