@@ -15,16 +15,14 @@ st.set_page_config(
 # 定数
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 JST = pytz.timezone('Asia/Tokyo')
-LIVE_API_URL = "https://www.showroom-live.com/api/live/onlives"
+ONLIVES_API_URL = "https://www.showroom-live.com/api/live/onlives"
+ROOM_STATUS_API_URL = "https://www.showroom-live.com/api/room/status"
 COMMENT_API_URL = "https://www.showroom-live.com/api/live/comment_log"
 GIFT_API_URL = "https://www.showroom-live.com/api/live/gift_log"
 GIFT_LIST_API_URL = "https://www.showroom-live.com/api/live/gift_list"
 FAN_LIST_API_URL = "https://www.showroom-live.com/api/active_fan/users"
 
 # CSSスタイル
-# - コンテナの固定高さとスクロールバー
-# - コメント/ギフト/ファンリストのアイテム表示
-# - ハイライトカラー（前回のツールから流用）
 CSS_STYLE = """
 <style>
 .dashboard-container {
@@ -94,25 +92,54 @@ if "gift_list_map" not in st.session_state:
 
 # --- API連携関数 ---
 
-@st.cache_data(ttl=300)
-def get_onlives_data():
-    """全ライブ配信中のルーム情報を取得"""
+def get_onlives_rooms():
+    """onlives APIからすべての配信中ルームの情報を取得"""
+    onlives = {}
     try:
-        response = requests.get(LIVE_API_URL, headers=HEADERS, timeout=5)
+        response = requests.get(ONLIVES_API_URL, headers=HEADERS, timeout=5)
         response.raise_for_status()
         data = response.json()
         all_lives = []
         if isinstance(data, dict):
-            for live_type in ['onlives', 'official_lives', 'talent_lives', 'amateur_lives']:
+            if 'onlives' in data and isinstance(data['onlives'], list):
+                for genre_group in data['onlives']:
+                    if 'lives' in genre_group and isinstance(genre_group['lives'], list):
+                        all_lives.extend(genre_group['lives'])
+            for live_type in ['official_lives', 'talent_lives', 'amateur_lives']:
                 if live_type in data and isinstance(data.get(live_type), list):
                     all_lives.extend(data[live_type])
-        return all_lives
+        for room in all_lives:
+            room_id = None
+            if isinstance(room, dict):
+                room_id = room.get('room_id')
+                if room_id is None and 'live_info' in room and isinstance(room['live_info'], dict):
+                    room_id = room['live_info'].get('room_id')
+                if room_id is None and 'room' in room and isinstance(room['room'], dict):
+                    room_id = room['room'].get('room_id')
+            if room_id:
+                onlives[int(room_id)] = room
     except requests.exceptions.RequestException as e:
-        st.error(f"ライブ情報取得中にエラーが発生しました: {e}")
-        return []
+        st.warning(f"配信情報取得中にエラーが発生しました: {e}")
     except (ValueError, AttributeError):
-        st.error("ライブ情報のJSONデコードまたは解析に失敗しました。")
-        return []
+        st.warning("配信情報のJSONデコードまたは解析に失敗しました。")
+    return onlives
+
+def check_live_status(room_id):
+    """room/status APIから配信中か確認し、ルーム情報を取得"""
+    url = f"{ROOM_STATUS_API_URL}?room_id={room_id}"
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        if data.get('is_live'):
+            return data
+        return None
+    except requests.exceptions.RequestException as e:
+        st.error(f"ルーム情報取得中にエラーが発生しました: {e}")
+        return None
+    except (ValueError, AttributeError):
+        st.error("ルーム情報のJSONデコードまたは解析に失敗しました。")
+        return None
 
 def get_and_update_log(log_type, room_id):
     """コメントまたはギフトのログを取得・更新"""
@@ -123,7 +150,6 @@ def get_and_update_log(log_type, room_id):
         response.raise_for_status()
         new_log = response.json().get(f'{log_type}_log', [])
         
-        # セッションキャッシュにないログだけ追加する
         existing_cache = st.session_state[f"{log_type}_log"]
         existing_log_keys = {
             (log.get('created_at'), log.get('name'), log.get('comment', log.get('gift_id')))
@@ -134,7 +160,6 @@ def get_and_update_log(log_type, room_id):
             if log_key not in existing_log_keys:
                 existing_cache.append(log)
         
-        # 新しい順にソート
         existing_cache.sort(key=lambda x: x.get('created_at', 0), reverse=True)
         return existing_cache
     except requests.exceptions.RequestException as e:
@@ -193,7 +218,6 @@ with col1:
     if col1.button("トラッキング開始", key="start_button"):
         st.session_state.is_tracking = True
         st.session_state.room_id = input_room_id
-        # データ初期化
         st.session_state.comment_log = []
         st.session_state.gift_log = []
         st.session_state.gift_list_map = {}
@@ -208,16 +232,14 @@ with col2:
         st.rerun()
 
 if st.session_state.is_tracking:
-    live_info = get_onlives_data()
-    target_room = next((r for r in live_info if str(r.get('room_id')) == str(st.session_state.room_id)), None)
-
-    if target_room:
-        st.success(f"ルーム「{target_room.get('main_name')}」の配信をトラッキング中です！")
+    onlives_data = get_onlives_rooms()
+    target_room_info = onlives_data.get(int(st.session_state.room_id)) if st.session_state.room_id.isdigit() else None
+    
+    if target_room_info:
+        st.success(f"ルーム「{target_room_info.get('room_name')}」の配信をトラッキング中です！")
         
-        # 7秒ごとに自動更新
         st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
         
-        # 各ログを取得
         st.session_state.comment_log = get_and_update_log("comment", st.session_state.room_id)
         st.session_state.gift_log = get_and_update_log("gift", st.session_state.room_id)
         st.session_state.gift_list_map = get_gift_list(st.session_state.room_id)
@@ -230,7 +252,6 @@ if st.session_state.is_tracking:
 
         col_comment, col_gift, col_fan = st.columns(3)
 
-        # コメントコンテナ
         with col_comment:
             st.markdown("### 📝 コメントログ")
             st.markdown("<div class='dashboard-container'>", unsafe_allow_html=True)
@@ -251,7 +272,6 @@ if st.session_state.is_tracking:
                 st.info("コメントがありません。")
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # ギフトコンテナ
         with col_gift:
             st.markdown("### 🎁 ギフトログ")
             st.markdown("<div class='dashboard-container'>", unsafe_allow_html=True)
@@ -291,7 +311,6 @@ if st.session_state.is_tracking:
                 st.info("ギフトがありません。")
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # ファンリストコンテナ
         with col_fan:
             st.markdown("### 🏆 ファンリスト")
             st.markdown("<div class='dashboard-container'>", unsafe_allow_html=True)
@@ -319,7 +338,6 @@ if st.session_state.is_tracking:
 
         download_col1, download_col2 = st.columns(2)
         
-        # コメントログをCSV化
         if st.session_state.comment_log:
             comment_df = pd.DataFrame(st.session_state.comment_log)
             comment_df['created_at'] = pd.to_datetime(comment_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST)
@@ -337,12 +355,10 @@ if st.session_state.is_tracking:
         else:
             download_col1.info("ダウンロードできるコメントがありません。")
         
-        # ギフトログをCSV化
         if st.session_state.gift_log:
             gift_df = pd.DataFrame(st.session_state.gift_log)
             gift_df['created_at'] = pd.to_datetime(gift_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST)
             
-            # ギフト情報を結合
             if st.session_state.gift_list_map:
                 gift_info_df = pd.DataFrame.from_dict(st.session_state.gift_list_map, orient='index')
                 gift_info_df.index = gift_info_df.index.astype(int)
