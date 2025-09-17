@@ -180,8 +180,8 @@ def get_fan_list(room_id):
     """ファンリストを全量取得"""
     all_users = []
     page = 1
-    has_next = True
-    while has_next:
+    # 最大5ページまで取得を試みる（100位以降のデータ取得用）
+    while page <= 5: 
         current_ym = datetime.datetime.now(JST).strftime("%Y%m")
         url = f"{FAN_LIST_API_URL}?room_id={room_id}&ym={current_ym}&page={page}"
         try:
@@ -189,12 +189,16 @@ def get_fan_list(room_id):
             response.raise_for_status()
             data = response.json()
             users = data.get("users", [])
-            all_users.extend(users)
-            has_next = data.get("next_page", None) is not None
-            if has_next:
-                page += 1
-            else:
+            if not users:
+                # データが取得できなくなったら終了
                 break
+            all_users.extend(users)
+            
+            # ページごとに表示件数が異なる可能性を考慮してbreak
+            if len(users) < 20: 
+                break
+            
+            page += 1
         except requests.exceptions.RequestException as e:
             st.warning(f"ルームID {room_id} のファンリスト取得中にエラーが発生しました。")
             break
