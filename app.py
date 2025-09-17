@@ -273,6 +273,8 @@ if st.session_state.is_tracking:
         display_name = room_name if room_name else f"ルームID {st.session_state.room_id}"
         st.success(f"ルーム「{display_name}」の配信をトラッキング中です！")
         
+        st.markdown("---") # 修正箇所：この行を上に移動
+        
         st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
         
         st.session_state.comment_log = get_and_update_log("comment", st.session_state.room_id)
@@ -283,7 +285,6 @@ if st.session_state.is_tracking:
         st.session_state.fan_list = fan_list
         st.session_state.total_fan_count = total_fan_count
 
-        st.markdown("---")
         st.markdown("<h2 style='font-size:2em;'>📊 リアルタイム・ダッシュボード</h2>", unsafe_allow_html=True)
         st.markdown(f"**最終更新日時 (日本時間): {datetime.datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')}**")
         st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※約7秒ごとに自動更新されます。</p>", unsafe_allow_html=True)
