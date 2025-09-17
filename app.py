@@ -177,11 +177,10 @@ def get_gift_list(room_id):
         return {}
 
 def get_fan_list(room_id):
-    """ファンリストを全量取得"""
-    all_users = []
+    """ファンリストを重複なく全量取得"""
+    all_users_dict = {}
     page = 1
-    # 最大5ページまで取得を試みる（100位以降のデータ取得用）
-    while page <= 5: 
+    while True: 
         current_ym = datetime.datetime.now(JST).strftime("%Y%m")
         url = f"{FAN_LIST_API_URL}?room_id={room_id}&ym={current_ym}&page={page}"
         try:
@@ -189,12 +188,16 @@ def get_fan_list(room_id):
             response.raise_for_status()
             data = response.json()
             users = data.get("users", [])
-            if not users:
-                # データが取得できなくなったら終了
-                break
-            all_users.extend(users)
             
-            # ページごとに表示件数が異なる可能性を考慮してbreak
+            if not users:
+                break
+            
+            # user_idをキーとして辞書に追加し、重複を排除
+            for user in users:
+                if 'user_id' in user:
+                    all_users_dict[user['user_id']] = user
+            
+            # APIが返すリスト件数が少ない場合は、次のページがないと判断
             if len(users) < 20: 
                 break
             
@@ -202,7 +205,9 @@ def get_fan_list(room_id):
         except requests.exceptions.RequestException as e:
             st.warning(f"ルームID {room_id} のファンリスト取得中にエラーが発生しました。")
             break
-    return all_users
+            
+    # 辞書の値をリストに変換して返す
+    return list(all_users_dict.values())
 
 # --- UI構築 ---
 
@@ -314,7 +319,6 @@ if st.session_state.is_tracking:
             st.markdown("### 🏆 ファンリスト (リアルタイム)")
             with st.container(border=True, height=500):
                 if st.session_state.fan_list:
-                    # ファンリスト全量表示
                     for fan in st.session_state.fan_list:
                         html = f"""
                         <div class="fan-item">
