@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 import pytz
 import datetime
+import io
 from streamlit_autorefresh import st_autorefresh
 
 # ページ設定
@@ -338,8 +339,10 @@ if st.session_state.is_tracking:
         with col_fan:
             st.markdown("### 🏆 ファンリスト (リアルタイム)")
             with st.container(border=True, height=500):
-                if st.session_state.fan_list:
-                    for fan in st.session_state.fan_list:
+                # レベル10以上のファンのみを表示
+                filtered_fans = [fan for fan in st.session_state.fan_list if fan.get('level', 0) >= 10]
+                if filtered_fans:
+                    for fan in filtered_fans:
                         html = f"""
                         <div class="fan-item">
                             <div class="fan-info-row">
@@ -357,6 +360,7 @@ if st.session_state.is_tracking:
         
         st.markdown("---")
         st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
+        # ファンリストの件数を追加して文言を修正
         st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{len(st.session_state.fan_list)}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
 
         # コメント一覧表
@@ -373,10 +377,14 @@ if st.session_state.is_tracking:
             })
             st.markdown("### 📝 コメントログ一覧表")
             st.dataframe(comment_df[['コメント時間', 'ユーザー名', 'コメント内容', 'ユーザーID']], use_container_width=True, hide_index=True)
-            csv_comment = comment_df[['コメント時間', 'ユーザー名', 'ユーザーID', 'コメント内容']].to_csv(index=False, encoding='utf-8-sig')
+            
+            # CSVの文字化けを修正
+            buffer = io.BytesIO()
+            comment_df[['コメント時間', 'ユーザー名', 'ユーザーID', 'コメント内容']].to_csv(buffer, index=False, encoding='utf-8-sig')
+            buffer.seek(0)
             st.download_button(
                 label="コメントログをCSVでダウンロード",
-                data=csv_comment,
+                data=buffer,
                 file_name=f"comment_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
             )
@@ -403,10 +411,14 @@ if st.session_state.is_tracking:
             st.markdown("### 🎁 ギフトログ一覧表")
             # 表示順を「ギフト時間」「ユーザー名」「ギフト名」「個数」「ポイント」「ユーザーID」に変更
             st.dataframe(gift_df[['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']], use_container_width=True, hide_index=True)
-            csv_gift = gift_df[['ギフト時間', 'ユーザー名', 'ユーザーID', 'ギフト名', '個数', 'ポイント']].to_csv(index=False, encoding='utf-8-sig')
+            
+            # CSVの文字化けを修正
+            buffer = io.BytesIO()
+            gift_df[['ギフト時間', 'ユーザー名', 'ユーザーID', 'ギフト名', '個数', 'ポイント']].to_csv(buffer, index=False, encoding='utf-8-sig')
+            buffer.seek(0)
             st.download_button(
                 label="ギフトログをCSVでダウンロード",
-                data=csv_gift,
+                data=buffer,
                 file_name=f"gift_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
             )
@@ -419,6 +431,9 @@ if st.session_state.is_tracking:
         if st.session_state.fan_list:
             fan_df = pd.DataFrame(st.session_state.fan_list)
             
+            # レベル10以上のファンのみに絞る
+            fan_df = fan_df[fan_df['level'] >= 10].copy()
+
             # 存在しないカラム名を安全にリネーム
             rename_map = {'user_name': 'ユーザー名', 'level': 'レベル', 'point': 'ポイント'}
             if 'rank' in fan_df.columns:
@@ -445,10 +460,14 @@ if st.session_state.is_tracking:
                 hide_index=True,
                 column_config=column_config
             )
-            csv_fan = fan_df[final_display_columns].to_csv(index=False, encoding='utf-8-sig')
+            
+            # CSVの文字化けを修正
+            buffer = io.BytesIO()
+            fan_df[final_display_columns].to_csv(buffer, index=False, encoding='utf-8-sig')
+            buffer.seek(0)
             st.download_button(
                 label="ファンリストをCSVでダウンロード",
-                data=csv_fan,
+                data=buffer,
                 file_name=f"fan_list_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
             )
