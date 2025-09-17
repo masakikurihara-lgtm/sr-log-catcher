@@ -29,10 +29,6 @@ CSS_STYLE = """
     height: 500px;
     overflow-y: scroll;
     padding-right: 15px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 10px;
-    background-color: #f9f9f9;
 }
 .comment-item, .gift-item, .fan-item {
     border-bottom: 1px solid #eee;
@@ -75,6 +71,12 @@ CSS_STYLE = """
 .fan-level {
     font-weight: bold;
     color: #555;
+}
+.st-emotion-cache-16z9v4m {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 10px;
+    background-color: #f9f9f9;
 }
 </style>
 """
@@ -137,7 +139,6 @@ def get_and_update_log(log_type, room_id):
         response.raise_for_status()
         new_log = response.json().get(f'{log_type}_log', [])
         
-        # セッションキャッシュにないログだけ追加する
         existing_cache = st.session_state[f"{log_type}_log"]
         existing_log_keys = {
             (log.get('created_at'), log.get('name'), log.get('comment', log.get('gift_id')))
@@ -243,90 +244,113 @@ if st.session_state.is_tracking:
 
         with col_comment:
             st.markdown("### 📝 コメントログ")
-            with st.container():
-                st.markdown("<div class='dashboard-container'>", unsafe_allow_html=True)
+            comment_view = st.radio("表示形式", ["リスト", "一覧表"], key="comment_view")
+            with st.container(border=True):
                 filtered_comments = [
                     log for log in st.session_state.comment_log 
                     if not any(keyword in log.get('comment', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
                 ]
                 if filtered_comments:
-                    for log in filtered_comments:
-                        user_name = log.get('name', '匿名ユーザー')
-                        comment_text = log.get('comment', '')
-                        created_at = datetime.datetime.fromtimestamp(log.get('created_at', 0), JST).strftime("%H:%M:%S")
-                        html = f"""
-                        <div class="comment-item">
-                            <div class="comment-time">{created_at}</div>
-                            <div class="comment-user">{user_name}</div>
-                            <div class="comment-text">{comment_text}</div>
-                        </div>
-                        """
-                        st.markdown(html, unsafe_allow_html=True)
+                    if comment_view == "リスト":
+                        for log in filtered_comments:
+                            user_name = log.get('name', '匿名ユーザー')
+                            comment_text = log.get('comment', '')
+                            created_at = datetime.datetime.fromtimestamp(log.get('created_at', 0), JST).strftime("%H:%M:%S")
+                            html = f"""
+                            <div class="comment-item">
+                                <div class="comment-time">{created_at}</div>
+                                <div class="comment-user">{user_name}</div>
+                                <div class="comment-text">{comment_text}</div>
+                            </div>
+                            """
+                            st.markdown(html, unsafe_allow_html=True)
+                    else:
+                        comment_df = pd.DataFrame(filtered_comments)
+                        comment_df['created_at'] = pd.to_datetime(comment_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+                        comment_df = comment_df.rename(columns={
+                            'name': 'ユーザー名', 'comment': 'コメント内容', 'created_at': 'コメント時間', 'user_id': 'ユーザーID'
+                        })
+                        st.dataframe(comment_df[['コメント時間', 'ユーザー名', 'コメント内容', 'user_id']], use_container_width=True, hide_index=True)
                 else:
                     st.info("コメントがありません。")
-                st.markdown("</div>", unsafe_allow_html=True)
 
         with col_gift:
             st.markdown("### 🎁 ギフトログ")
-            with st.container():
-                st.markdown("<div class='dashboard-container'>", unsafe_allow_html=True)
+            gift_view = st.radio("表示形式", ["リスト", "一覧表"], key="gift_view")
+            with st.container(border=True):
                 if st.session_state.gift_log and st.session_state.gift_list_map:
-                    for log in st.session_state.gift_log:
-                        gift_info = st.session_state.gift_list_map.get(str(log.get('gift_id')), {})
-                        if not gift_info:
-                            continue
-                        
-                        user_name = log.get('name', '匿名ユーザー')
-                        created_at = datetime.datetime.fromtimestamp(log.get('created_at', 0), JST).strftime("%H:%M:%S")
-                        gift_point = gift_info.get('point', 0)
-                        gift_count = log.get('num', 0)
-                        total_point = gift_point * gift_count
-                        
-                        highlight_class = ""
-                        if total_point >= 300000: highlight_class = "highlight-300000"
-                        elif total_point >= 100000: highlight_class = "highlight-100000"
-                        elif total_point >= 60000: highlight_class = "highlight-60000"
-                        elif total_point >= 30000: highlight_class = "highlight-30000"
-                        elif total_point >= 10000: highlight_class = "highlight-10000"
-                        
-                        gift_image_url = log.get('image', gift_info.get('image', ''))
-                        
-                        html = f"""
-                        <div class="gift-item {highlight_class}">
-                            <div class="comment-time">{created_at}</div>
-                            <div class="gift-info-row">
-                                <img src="{gift_image_url}" class="gift-image" />
-                                <span>×{gift_count}</span>
+                    if gift_view == "リスト":
+                        for log in st.session_state.gift_log:
+                            gift_info = st.session_state.gift_list_map.get(str(log.get('gift_id')), {})
+                            if not gift_info:
+                                continue
+                            user_name = log.get('name', '匿名ユーザー')
+                            created_at = datetime.datetime.fromtimestamp(log.get('created_at', 0), JST).strftime("%H:%M:%S")
+                            gift_point = gift_info.get('point', 0)
+                            gift_count = log.get('num', 0)
+                            total_point = gift_point * gift_count
+                            
+                            highlight_class = ""
+                            if total_point >= 300000: highlight_class = "highlight-300000"
+                            elif total_point >= 100000: highlight_class = "highlight-100000"
+                            elif total_point >= 60000: highlight_class = "highlight-60000"
+                            elif total_point >= 30000: highlight_class = "highlight-30000"
+                            elif total_point >= 10000: highlight_class = "highlight-10000"
+                            
+                            gift_image_url = log.get('image', gift_info.get('image', ''))
+                            html = f"""
+                            <div class="gift-item {highlight_class}">
+                                <div class="comment-time">{created_at}</div>
+                                <div class="gift-info-row">
+                                    <img src="{gift_image_url}" class="gift-image" />
+                                    <span>×{gift_count}</span>
+                                </div>
+                                <div>{user_name} ({gift_point}pt)</div>
                             </div>
-                            <div>{user_name} ({gift_point}pt)</div>
-                        </div>
-                        """
-                        st.markdown(html, unsafe_allow_html=True)
+                            """
+                            st.markdown(html, unsafe_allow_html=True)
+                    else:
+                        gift_df = pd.DataFrame(st.session_state.gift_log)
+                        gift_df['created_at'] = pd.to_datetime(gift_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        gift_info_df = pd.DataFrame.from_dict(st.session_state.gift_list_map, orient='index')
+                        gift_info_df.index = gift_info_df.index.astype(str)
+                        gift_df = gift_df.set_index('gift_id').join(gift_info_df, on='gift_id', lsuffix='_user_data', rsuffix='_gift_info').reset_index()
+
+                        gift_df = gift_df.rename(columns={
+                            'name_user_data': 'ユーザー名', 'name_gift_info': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'created_at': 'ギフト時間', 'user_id': 'ユーザーID'
+                        })
+                        st.dataframe(gift_df[['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']], use_container_width=True, hide_index=True)
                 else:
                     st.info("ギフトがありません。")
-                st.markdown("</div>", unsafe_allow_html=True)
 
         with col_fan:
             st.markdown("### 🏆 ファンリスト")
-            with st.container():
-                st.markdown("<div class='dashboard-container'>", unsafe_allow_html=True)
+            fan_view = st.radio("表示形式", ["リスト", "一覧表"], key="fan_view")
+            with st.container(border=True):
                 if st.session_state.fan_list:
-                    for fan in st.session_state.fan_list:
-                        html = f"""
-                        <div class="fan-item">
-                            <div class="fan-info-row">
-                                <img src="https://static.showroom-live.com/image/avatar/{fan.get('avatar_id', 0)}.png?v=108" width="30" height="30" style="border-radius:50%;" />
-                                <div>
-                                    <div class="fan-level">Lv. {fan.get('level', 0)}</div>
-                                    <div>{fan.get('user_name', '不明なユーザー')}</div>
+                    if fan_view == "リスト":
+                        for fan in st.session_state.fan_list:
+                            html = f"""
+                            <div class="fan-item">
+                                <div class="fan-info-row">
+                                    <img src="https://static.showroom-live.com/image/avatar/{fan.get('avatar_id', 0)}.png?v=108" width="30" height="30" style="border-radius:50%;" />
+                                    <div>
+                                        <div class="fan-level">Lv. {fan.get('level', 0)}</div>
+                                        <div>{fan.get('user_name', '不明なユーザー')}</div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        """
-                        st.markdown(html, unsafe_allow_html=True)
+                            """
+                            st.markdown(html, unsafe_allow_html=True)
+                    else:
+                        fan_df = pd.DataFrame(st.session_state.fan_list)
+                        fan_df = fan_df.rename(columns={
+                            'user_name': 'ユーザー名', 'level': 'レベル', 'point': 'ポイント', 'rank': '順位'
+                        })
+                        st.dataframe(fan_df[['順位', 'レベル', 'ユーザー名', 'ポイント']], use_container_width=True, hide_index=True)
                 else:
                     st.info("ファンデータがありません。")
-                st.markdown("</div>", unsafe_allow_html=True)
         
         st.markdown("---")
         st.markdown("<h2 style='font-size:2em;'>📝 ログのダウンロード</h2>", unsafe_allow_html=True)
@@ -357,12 +381,11 @@ if st.session_state.is_tracking:
             
             if st.session_state.gift_list_map:
                 gift_info_df = pd.DataFrame.from_dict(st.session_state.gift_list_map, orient='index')
-                gift_info_df.index = gift_info_df.index.astype(int)
-                # ここを修正: 同じカラム名が存在するため、suffixesを指定
-                gift_df = gift_df.set_index('gift_id').join(gift_info_df, on='gift_id', lsuffix='_gift', rsuffix='_info').reset_index()
+                gift_info_df.index = gift_info_df.index.astype(str)
+                gift_df = gift_df.set_index('gift_id').join(gift_info_df, on='gift_id', lsuffix='_user_data', rsuffix='_gift_info').reset_index()
 
             gift_df = gift_df.rename(columns={
-                'name_gift': 'ユーザー名', 'name_info': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'created_at': 'ギフト時間', 'user_id': 'ユーザーID'
+                'name_user_data': 'ユーザー名', 'name_gift_info': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'created_at': 'ギフト時間', 'user_id': 'ユーザーID'
             })
             
             csv_gift = gift_df[['ギフト時間', 'ユーザー名', 'ユーザーID', 'ギフト名', '個数', 'ポイント']].to_csv(index=False, encoding='utf-8-sig')
