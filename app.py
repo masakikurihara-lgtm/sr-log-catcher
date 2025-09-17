@@ -319,10 +319,15 @@ if st.session_state.is_tracking:
         st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
         st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のギフトが蓄積されています。</p>", unsafe_allow_html=True)
 
-        if st.session_state.comment_log:
-            comment_df = pd.DataFrame(st.session_state.comment_log)
+        # コメント一覧表
+        filtered_comments_df = [
+            log for log in st.session_state.comment_log 
+            if not any(keyword in log.get('name', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
+        ]
+        if filtered_comments_df:
+            comment_df = pd.DataFrame(filtered_comments_df)
             comment_df['created_at'] = pd.to_datetime(comment_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
-            comment_df['user_id'] = [log.get('user_id', 'N/A') for log in st.session_state.comment_log]
+            comment_df['user_id'] = [log.get('user_id', 'N/A') for log in filtered_comments_df]
             comment_df = comment_df.rename(columns={
                 'name': 'ユーザー名', 'comment': 'コメント内容', 'created_at': 'コメント時間', 'user_id': 'ユーザーID'
             })
@@ -340,6 +345,7 @@ if st.session_state.is_tracking:
         
         st.markdown("---")
 
+        # ギフト一覧表
         if st.session_state.gift_log:
             gift_df = pd.DataFrame(st.session_state.gift_log)
             gift_df['created_at'] = pd.to_datetime(gift_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -368,14 +374,24 @@ if st.session_state.is_tracking:
         
         st.markdown("---")
 
+        # ファンリスト一覧表
         if st.session_state.fan_list:
             fan_df = pd.DataFrame(st.session_state.fan_list)
-            fan_df = fan_df.rename(columns={
-                'user_name': 'ユーザー名', 'level': 'レベル', 'point': 'ポイント', 'rank': '順位'
-            })
+            
+            # 存在しないカラム名を安全にリネーム
+            rename_map = {'user_name': 'ユーザー名', 'level': 'レベル', 'point': 'ポイント'}
+            if 'rank' in fan_df.columns:
+                rename_map['rank'] = '順位'
+            
+            fan_df = fan_df.rename(columns=rename_map)
+
+            # 表示するカラムも同様に存在するもののみを選択
+            display_columns = ['順位', 'レベル', 'ユーザー名', 'ポイント']
+            final_display_columns = [col for col in display_columns if col in fan_df.columns]
+
             st.markdown("### 🏆 ファンリスト一覧表")
-            st.dataframe(fan_df[['順位', 'レベル', 'ユーザー名', 'ポイント']], use_container_width=True, hide_index=True)
-            csv_fan = fan_df[['順位', 'レベル', 'ユーザー名', 'ポイント']].to_csv(index=False, encoding='utf-8-sig')
+            st.dataframe(fan_df[final_display_columns], use_container_width=True, hide_index=True)
+            csv_fan = fan_df[final_display_columns].to_csv(index=False, encoding='utf-8-sig')
             st.download_button(
                 label="ファンリストをCSVでダウンロード",
                 data=csv_fan,
