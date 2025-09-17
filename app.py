@@ -470,7 +470,7 @@ if st.session_state.gift_log:
         mime="text/csv",
     )
 else:
-    st.info("ダウンロードできるギフトがありません。")
+    st.info("ダウンロードできるスペシャルギフトがありません。")
 
 st.markdown("---")
 
