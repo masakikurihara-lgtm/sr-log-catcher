@@ -24,6 +24,7 @@ COMMENT_API_URL = "https://www.showroom-live.com/api/live/comment_log"
 GIFT_API_URL = "https://www.showroom-live.com/api/live/gift_log"
 GIFT_LIST_API_URL = "https://www.showroom-live.com/api/live/gift_list"
 FAN_LIST_API_URL = "https://www.showroom-live.com/api/active_fan/users"
+# 日本語の運営コメントも除外キーワードに追加
 SYSTEM_COMMENT_KEYWORDS = ["SHOWROOM Management", "Earn weekly glittery rewards!", "ウィークリーグリッター特典獲得中！", "SHOWROOM運営"]
 
 # CSSスタイル
@@ -40,6 +41,20 @@ CSS_STYLE = """
 }
 .comment-item:last-child, .gift-item:last-child, .fan-item:last-child {
     border-bottom: none;
+}
+.comment-item-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+.comment-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+.comment-content {
+    flex-grow: 1;
 }
 .comment-time {
     font-size: 0.8em;
@@ -141,10 +156,8 @@ def get_and_update_log(log_type, room_id):
         response.raise_for_status()
         new_log = response.json().get(f'{log_type}_log', [])
         
-        # 新しいログを既存のログに追加し、重複を排除
         existing_cache = st.session_state[f"{log_type}_log"]
         
-        # タイムスタンプと名前の組み合わせで重複をチェック
         existing_log_keys = {
             (log.get('created_at'), log.get('name'))
             for log in existing_cache
@@ -158,7 +171,6 @@ def get_and_update_log(log_type, room_id):
                 existing_log_keys.add(log_key)
                 added_count += 1
         
-        # タイムスタンプの降順でソート
         existing_cache.sort(key=lambda x: x.get('created_at', 0), reverse=True)
         return existing_cache
     except requests.exceptions.RequestException as e:
@@ -215,7 +227,6 @@ def get_fan_list(room_id):
             if not users:
                 break
             
-            # レベル10未満のユーザーが現れたらループを終了
             for user in users:
                 if user.get('level', 0) < 10:
                     return fan_list, total_user_count
@@ -223,7 +234,6 @@ def get_fan_list(room_id):
             
             offset += len(users)
             
-            # 取得件数がlimitより少ない場合は最後のページと判断
             if len(users) < limit:
                 break
             
@@ -300,11 +310,18 @@ if st.session_state.is_tracking:
                         user_name = log.get('name', '匿名ユーザー')
                         comment_text = log.get('comment', '')
                         created_at = datetime.datetime.fromtimestamp(log.get('created_at', 0), JST).strftime("%H:%M:%S")
+                        avatar_url = log.get('avatar_url', '')
+                        
                         html = f"""
                         <div class="comment-item">
-                            <div class="comment-time">{created_at}</div>
-                            <div class="comment-user">{user_name}</div>
-                            <div class="comment-text">{comment_text}</div>
+                            <div class="comment-item-row">
+                                <img src="{avatar_url}" class="comment-avatar" />
+                                <div class="comment-content">
+                                    <div class="comment-time">{created_at}</div>
+                                    <div class="comment-user">{user_name}</div>
+                                    <div class="comment-text">{comment_text}</div>
+                                </div>
+                            </div>
                         </div>
                         """
                         st.markdown(html, unsafe_allow_html=True)
@@ -371,7 +388,6 @@ if st.session_state.is_tracking:
         st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
         st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{st.session_state.total_fan_count}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
 
-        # 表示・ダウンロード用カラムを定義
         comment_cols = ['コメント時間', 'ユーザー名', 'コメント内容', 'ユーザーID']
         gift_cols = ['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']
         fan_cols = ['順位', 'レベル', 'ユーザー名', 'ポイント', 'ユーザーID']
