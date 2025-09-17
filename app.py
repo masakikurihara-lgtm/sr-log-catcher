@@ -282,7 +282,7 @@ if st.session_state.is_tracking:
         display_name = room_name if room_name else f"ルームID {st.session_state.room_id}"
         
         # 修正箇所: st.success()をカスタムHTMLに置き換え
-        st.markdown(f'<div class="tracking-success">ルーム「{display_name}」の配信をトラッキング中です！</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="tracking-success">{display_name}の配信をトラッキング中です！</div>', unsafe_allow_html=True)
         
         st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
         
@@ -295,14 +295,14 @@ if st.session_state.is_tracking:
         st.session_state.total_fan_count = total_fan_count
 
         st.markdown("---")
-        st.markdown("<h2 style='font-size:2em;'>📊 リアルタイム・ダッシュボード</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='font-size:2em;'>📊 リアルタイムダッシュボード</h2>", unsafe_allow_html=True)
         st.markdown(f"**最終更新日時 (日本時間): {datetime.datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')}**")
         st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※約7秒ごとに自動更新されます。</p>", unsafe_allow_html=True)
 
         col_comment, col_gift, col_fan = st.columns(3)
 
         with col_comment:
-            st.markdown("### 📝 コメントログ (リアルタイム)")
+            st.markdown("### 📝 コメント")
             with st.container(border=True, height=500):
                 filtered_comments = [
                     log for log in st.session_state.comment_log 
@@ -333,7 +333,7 @@ if st.session_state.is_tracking:
                     st.info("コメントがありません。")
 
         with col_gift:
-            st.markdown("### 🎁 ギフトログ (リアルタイム)")
+            st.markdown("### 🎁 スペシャルギフト")
             with st.container(border=True, height=500):
                 if st.session_state.gift_log and st.session_state.gift_list_map:
                     for log in st.session_state.gift_log:
@@ -382,7 +382,7 @@ if st.session_state.is_tracking:
                     st.info("ギフトがありません。")
 
         with col_fan:
-            st.markdown("### 🏆 ファンリスト (リアルタイム)")
+            st.markdown("### 🏆 ファンリスト")
             with st.container(border=True, height=500):
                 if st.session_state.fan_list:
                     for fan in st.session_state.fan_list:
@@ -457,14 +457,14 @@ if st.session_state.gift_log:
     gift_df = gift_df.rename(columns={
         'name_user_data': 'ユーザー名', 'name_gift_info': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'created_at': 'ギフト時間', 'user_id': 'ユーザーID'
     })
-    st.markdown("### 🎁 ギフトログ一覧表")
+    st.markdown("### 🎁 スペシャルギフトログ一覧表")
     st.dataframe(gift_df[gift_cols], use_container_width=True, hide_index=True)
     
     buffer = io.BytesIO()
     gift_df[gift_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
     buffer.seek(0)
     st.download_button(
-        label="ギフトログをCSVでダウンロード",
+        label="スペシャルギフトログをCSVでダウンロード",
         data=buffer,
         file_name=f"gift_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
         mime="text/csv",
