@@ -13,10 +13,7 @@ st.set_page_config(
 )
 
 # 定数
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
-}
+HEADERS = {"User-Agent": "Mozilla/5.0"}
 JST = pytz.timezone('Asia/Tokyo')
 ONLIVES_API_URL = "https://www.showroom-live.com/api/live/onlives"
 COMMENT_API_URL = "https://www.showroom-live.com/api/live/comment_log"
@@ -92,8 +89,6 @@ if "fan_list" not in st.session_state:
     st.session_state.fan_list = []
 if "gift_list_map" not in st.session_state:
     st.session_state.gift_list_map = {}
-if 'onlives_data' not in st.session_state:
-    st.session_state.onlives_data = {}
 
 # --- API連携関数 ---
 
@@ -124,9 +119,9 @@ def get_onlives_rooms():
             if room_id:
                 onlives[int(room_id)] = room
     except requests.exceptions.RequestException as e:
-        st.error(f"配信情報取得中にエラーが発生しました: {e}")
+        st.warning(f"配信情報取得中にエラーが発生しました: {e}")
     except (ValueError, AttributeError):
-        st.error("配信情報のJSONデコードまたは解析に失敗しました。")
+        st.warning("配信情報のJSONデコードまたは解析に失敗しました。")
     return onlives
 
 def get_and_update_log(log_type, room_id):
@@ -138,25 +133,16 @@ def get_and_update_log(log_type, room_id):
         response.raise_for_status()
         new_log = response.json().get(f'{log_type}_log', [])
         
-        # 新しいログを既存のログに追加し、重複を排除
         existing_cache = st.session_state[f"{log_type}_log"]
-        
-        # 新しいログの`created_at`と`id`の組み合わせで重複をチェック
-        existing_log_ids = set()
-        for log in existing_cache:
-            log_id = log.get('created_at')
-            if log_id:
-                existing_log_ids.add(log_id)
-
-        added_count = 0
+        existing_log_keys = {
+            (log.get('created_at'), log.get('name'), log.get('comment', log.get('gift_id')))
+            for log in existing_cache
+        }
         for log in new_log:
-            log_id = log.get('created_at')
-            if log_id and log_id not in existing_log_ids:
+            log_key = (log.get('created_at'), log.get('name'), log.get('comment', log.get('gift_id')))
+            if log_key not in existing_log_keys:
                 existing_cache.append(log)
-                existing_log_ids.add(log_id)
-                added_count += 1
         
-        # タイムスタンプの降順でソート
         existing_cache.sort(key=lambda x: x.get('created_at', 0), reverse=True)
         return existing_cache
     except requests.exceptions.RequestException as e:
@@ -191,10 +177,11 @@ def get_gift_list(room_id):
         return {}
 
 def get_fan_list(room_id):
-    """ファンリストを重複なく全量取得"""
-    all_users_dict = {}
+    """ファンリストを全量取得"""
+    all_users = []
     page = 1
-    while True: 
+    has_next = True
+    while has_next:
         current_ym = datetime.datetime.now(JST).strftime("%Y%m")
         url = f"{FAN_LIST_API_URL}?room_id={room_id}&ym={current_ym}&page={page}"
         try:
@@ -202,26 +189,16 @@ def get_fan_list(room_id):
             response.raise_for_status()
             data = response.json()
             users = data.get("users", [])
-            
-            if not users:
+            all_users.extend(users)
+            has_next = data.get("next_page", None) is not None
+            if has_next:
+                page += 1
+            else:
                 break
-            
-            # user_idをキーとして辞書に追加し、重複を排除
-            for user in users:
-                if 'user_id' in user:
-                    all_users_dict[user['user_id']] = user
-            
-            # APIが返すリスト件数が少ない場合は、次のページがないと判断
-            if len(users) < 20: 
-                break
-            
-            page += 1
         except requests.exceptions.RequestException as e:
             st.warning(f"ルームID {room_id} のファンリスト取得中にエラーが発生しました。")
             break
-            
-    # 辞書の値をリストに変換して返す
-    return list(all_users_dict.values())
+    return all_users
 
 # --- UI構築 ---
 
@@ -233,16 +210,13 @@ input_room_id = st.text_input("対象のルームIDを入力してください:"
 col1, col2 = st.columns([1, 4])
 with col1:
     if col1.button("トラッキング開始", key="start_button"):
-        if input_room_id and input_room_id.isdigit():
-            st.session_state.is_tracking = True
-            st.session_state.room_id = input_room_id
-            st.session_state.comment_log = []
-            st.session_state.gift_log = []
-            st.session_state.gift_list_map = {}
-            st.session_state.fan_list = []
-            st.rerun()
-        else:
-            st.error("ルームIDを入力してください。")
+        st.session_state.is_tracking = True
+        st.session_state.room_id = input_room_id
+        st.session_state.comment_log = []
+        st.session_state.gift_log = []
+        st.session_state.gift_list_map = {}
+        st.session_state.fan_list = []
+        st.rerun()
 
 with col2:
     if col2.button("トラッキング停止", key="stop_button", disabled=not st.session_state.is_tracking):
@@ -256,9 +230,8 @@ if st.session_state.is_tracking:
     target_room_info = onlives_data.get(int(st.session_state.room_id)) if st.session_state.room_id.isdigit() else None
     
     if target_room_info:
-        room_name = target_room_info.get('room_name', None)
-        display_name = room_name if room_name else f"ルームID {st.session_state.room_id}"
-        st.success(f"ルーム「{display_name}」の配信をトラッキング中です！")
+        room_name = target_room_info.get('room_name', '不明なルーム名')
+        st.success(f"ルーム「{room_name}」の配信をトラッキング中です！")
         
         st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
         
@@ -337,6 +310,7 @@ if st.session_state.is_tracking:
             st.markdown("### 🏆 ファンリスト (リアルタイム)")
             with st.container(border=True, height=500):
                 if st.session_state.fan_list:
+                    # ファンリスト全量表示
                     for fan in st.session_state.fan_list:
                         html = f"""
                         <div class="fan-item">
@@ -355,6 +329,7 @@ if st.session_state.is_tracking:
         
         st.markdown("---")
         st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
+        # ファンリストの件数を追加して文言を修正
         st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{len(st.session_state.fan_list)}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
 
         # コメント一覧表
