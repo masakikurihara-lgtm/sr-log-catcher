@@ -96,6 +96,17 @@ CSS_STYLE = """
 """
 st.markdown(CSS_STYLE, unsafe_allow_html=True)
 
+# エラーメッセージ・警告メッセージの幅を100%に変更
+CUSTOM_MSG_CSS = """
+<style>
+div[data-testid="stNotification"] {
+    width: 100% !important;
+}
+</style>
+"""
+st.markdown(CUSTOM_MSG_CSS, unsafe_allow_html=True)
+
+
 # セッション状態の初期化
 if "room_id" not in st.session_state:
     st.session_state.room_id = ""
@@ -245,10 +256,7 @@ with col1:
             room_list_df = get_room_list()
             valid_ids = set(str(x) for x in room_list_df.iloc[:,0].dropna().astype(int))
             if input_room_id not in valid_ids:
-                st.markdown(
-                    '<div style="width:100%;">指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。</div>',
-                    unsafe_allow_html=True
-                )
+                st.error("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
             else:
                 st.session_state.is_tracking = True
                 st.session_state.room_id = input_room_id
@@ -392,10 +400,7 @@ if st.session_state.is_tracking:
                 else:
                     st.info("ファンデータがありません。")
     else:
-        st.markdown(
-            '<div style="width:100%;">指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。</div>',
-            unsafe_allow_html=True
-        )
+        st.warning("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
         st.session_state.is_tracking = False
 
 st.markdown("---")
