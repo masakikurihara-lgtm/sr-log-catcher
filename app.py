@@ -99,16 +99,21 @@ st.markdown(CSS_STYLE, unsafe_allow_html=True)
 # エラーメッセージ・警告メッセージの幅を100%に変更
 CUSTOM_MSG_CSS = """
 <style>
-/* st.warning や st.info と同じ幅にする */
+/* 通常の警告・情報用 */
 div[data-testid="stNotification"] {
     width: 100% !important;
     max-width: 100% !important;
 }
 
-/* st.error 用に親コンテナにも適用 */
-div[data-baseweb="toast"] {
+/* st.error 専用: Streamlit 1.38+ では .stAlert クラスを使用 */
+div.stAlert {
     width: 100% !important;
     max-width: 100% !important;
+}
+
+/* 追加の親要素にも適用（念のため） */
+section.main div.block-container {
+    width: 100% !important;
 }
 </style>
 """
