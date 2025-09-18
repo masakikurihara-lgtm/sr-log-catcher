@@ -99,8 +99,16 @@ st.markdown(CSS_STYLE, unsafe_allow_html=True)
 # エラーメッセージ・警告メッセージの幅を100%に変更
 CUSTOM_MSG_CSS = """
 <style>
+/* st.warning や st.info と同じ幅にする */
 div[data-testid="stNotification"] {
     width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* st.error 用に親コンテナにも適用 */
+div[data-baseweb="toast"] {
+    width: 100% !important;
+    max-width: 100% !important;
 }
 </style>
 """
