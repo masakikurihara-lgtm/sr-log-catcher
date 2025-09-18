@@ -245,7 +245,10 @@ with col1:
             room_list_df = get_room_list()
             valid_ids = set(str(x) for x in room_list_df.iloc[:,0].dropna().astype(int))
             if input_room_id not in valid_ids:
-                st.error("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
+                st.markdown(
+                    '<div style="width:100%;">指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。</div>',
+                    unsafe_allow_html=True
+                )
             else:
                 st.session_state.is_tracking = True
                 st.session_state.room_id = input_room_id
@@ -389,7 +392,10 @@ if st.session_state.is_tracking:
                 else:
                     st.info("ファンデータがありません。")
     else:
-        st.warning("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
+        st.markdown(
+            '<div style="width:100%;">指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。</div>',
+            unsafe_allow_html=True
+        )
         st.session_state.is_tracking = False
 
 st.markdown("---")
