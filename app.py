@@ -26,6 +26,7 @@ GIFT_LIST_API_URL = "https://www.showroom-live.com/api/live/gift_list"
 FAN_LIST_API_URL = "https://www.showroom-live.com/api/active_fan/users"
 SYSTEM_COMMENT_KEYWORDS = ["SHOWROOM Management", "Earn weekly glittery rewards!", "ウィークリーグリッター特典獲得中！", "SHOWROOM運営"]
 DEFAULT_AVATAR = "https://static.showroom-live.com/image/avatar/default_avatar.png"
+ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list.csv"
 
 # CSSスタイル
 CSS_STYLE = """
@@ -84,12 +85,12 @@ CSS_STYLE = """
     color: #555;
 }
 .tracking-success {
-    background-color: #e6f7e6; /* Streamlitのsuccessカラーに似た色 */
+    background-color: #e6f7e6;
     color: #333333;
     padding: 1rem;
-    border-left: 5px solid #4CAF50; /* Streamlitのsuccessカラー */
-    margin-bottom: -36px !important; /* 余白をなくす */
-    margin-top: 0 !important; /* 余白をなくす */
+    border-left: 5px solid #4CAF50;
+    margin-bottom: -36px !important;
+    margin-top: 0 !important;
 }
 </style>
 """
@@ -116,7 +117,6 @@ if 'total_fan_count' not in st.session_state:
 # --- API連携関数 ---
 
 def get_onlives_rooms():
-    """onlives APIからすべての配信中ルームの情報を取得"""
     onlives = {}
     try:
         response = requests.get(ONLIVES_API_URL, headers=HEADERS, timeout=5)
@@ -148,40 +148,28 @@ def get_onlives_rooms():
     return onlives
 
 def get_and_update_log(log_type, room_id):
-    """コメントまたはギフトのログを取得・更新"""
     api_url = COMMENT_API_URL if log_type == "comment" else GIFT_API_URL
     url = f"{api_url}?room_id={room_id}"
     try:
         response = requests.get(url, headers=HEADERS, timeout=5)
         response.raise_for_status()
         new_log = response.json().get(f'{log_type}_log', [])
-        
         existing_cache = st.session_state[f"{log_type}_log"]
-        
-        existing_log_keys = {
-            (log.get('created_at'), log.get('name'))
-            for log in existing_cache
-        }
-        
-        added_count = 0
+        existing_log_keys = {(log.get('created_at'), log.get('name')) for log in existing_cache}
         for log in new_log:
             log_key = (log.get('created_at'), log.get('name'))
             if log_key not in existing_log_keys:
                 existing_cache.append(log)
                 existing_log_keys.add(log_key)
-                added_count += 1
-        
         existing_cache.sort(key=lambda x: x.get('created_at', 0), reverse=True)
         return existing_cache
-    except requests.exceptions.RequestException as e:
+    except requests.exceptions.RequestException:
         st.warning(f"ルームID {room_id} の{log_type}ログ取得中にエラーが発生しました。配信中か確認してください。")
         return st.session_state.get(f"{log_type}_log", [])
 
 def get_gift_list(room_id):
-    """ギフトリスト（ポイント情報）を取得・キャッシュする"""
     if st.session_state.gift_list_map:
         return st.session_state.gift_list_map
-    
     url = f"{GIFT_LIST_API_URL}?room_id={room_id}"
     try:
         response = requests.get(url, headers=HEADERS, timeout=5)
@@ -205,14 +193,11 @@ def get_gift_list(room_id):
         return {}
 
 def get_fan_list(room_id):
-    """ファンリストをレベル10以上になるまで取得"""
     fan_list = []
     offset = 0
     limit = 50
     current_ym = datetime.datetime.now(JST).strftime("%Y%m")
-    
     total_user_count = 0
-    
     while True:
         url = f"{FAN_LIST_API_URL}?room_id={room_id}&ym={current_ym}&offset={offset}&limit={limit}"
         try:
@@ -220,28 +205,29 @@ def get_fan_list(room_id):
             response.raise_for_status()
             data = response.json()
             users = data.get("users", [])
-            
             if offset == 0 and "total_user_count" in data:
                 total_user_count = data["total_user_count"]
-            
             if not users:
                 break
-            
             for user in users:
                 if user.get('level', 0) < 10:
                     return fan_list, total_user_count
                 fan_list.append(user)
-            
             offset += len(users)
-            
             if len(users) < limit:
                 break
-            
-        except requests.exceptions.RequestException as e:
+        except requests.exceptions.RequestException:
             st.warning(f"ルームID {room_id} のファンリスト取得中にエラーが発生しました。")
             break
-            
     return fan_list, total_user_count
+
+# --- ルームリスト取得関数 ---
+def get_room_list():
+    try:
+        df = pd.read_csv(ROOM_LIST_URL)
+        return df
+    except Exception:
+        return pd.DataFrame()
 
 # --- UI構築 ---
 
@@ -255,14 +241,20 @@ col1, col2 = st.columns([1, 4])
 with col1:
     if col1.button("トラッキング開始", key="start_button"):
         if input_room_id and input_room_id.isdigit():
-            st.session_state.is_tracking = True
-            st.session_state.room_id = input_room_id
-            st.session_state.comment_log = []
-            st.session_state.gift_log = []
-            st.session_state.gift_list_map = {}
-            st.session_state.fan_list = []
-            st.session_state.total_fan_count = 0
-            st.rerun()
+            # ルームリスト確認
+            room_list_df = get_room_list()
+            valid_ids = set(str(x) for x in room_list_df.iloc[:,0].dropna().astype(int))
+            if input_room_id not in valid_ids:
+                st.error("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
+            else:
+                st.session_state.is_tracking = True
+                st.session_state.room_id = input_room_id
+                st.session_state.comment_log = []
+                st.session_state.gift_log = []
+                st.session_state.gift_list_map = {}
+                st.session_state.fan_list = []
+                st.session_state.total_fan_count = 0
+                st.rerun()
         else:
             st.error("ルームIDを入力してください。")
 
@@ -276,26 +268,25 @@ with col2:
 if st.session_state.is_tracking:
     onlives_data = get_onlives_rooms()
     target_room_info = onlives_data.get(int(st.session_state.room_id)) if st.session_state.room_id.isdigit() else None
-    
-    if target_room_info:
-        room_name = target_room_info.get('room_name', None)
-        room_id = st.session_state.room_id
-        profile_url = f"https://www.showroom-live.com/room/profile?room_id={room_id}"
-        
-        if room_name:
-            display_content = room_name
-        else:
-            # ルーム名が取得できない場合、ルームIDをリンクとして表示
-            display_content = f'<a href="{profile_url}" target="_blank" style="color: inherit; text-decoration: none;">ルームID {room_id}</a>'
 
-        st.markdown(f'<div class="tracking-success">{display_content} の配信をトラッキング中です！</div>', unsafe_allow_html=True)
-        
+    if target_room_info:
+        room_id = st.session_state.room_id
+        # ルーム名取得
+        try:
+            prof = requests.get(f"https://www.showroom-live.com/api/room/profile?room_id={room_id}", headers=HEADERS, timeout=5).json()
+            room_name = prof.get("room_name", f"ルームID {room_id}")
+        except Exception:
+            room_name = f"ルームID {room_id}"
+        # URLキー取得
+        room_url_key = prof.get("room_url_key", "")
+        room_url = f"https://www.showroom-live.com/r/{room_url_key}" if room_url_key else f"https://www.showroom-live.com/room/profile?room_id={room_id}"
+        link_html = f'<a href="{room_url}" target="_blank" style="font-weight:bold; text-decoration:underline; color:inherit;">{room_name}</a>'
+        st.markdown(f'<div class="tracking-success">{link_html} の配信をトラッキング中です！</div>', unsafe_allow_html=True)
+
         st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
-        
         st.session_state.comment_log = get_and_update_log("comment", st.session_state.room_id)
         st.session_state.gift_log = get_and_update_log("gift", st.session_state.room_id)
         st.session_state.gift_list_map = get_gift_list(st.session_state.room_id)
-        
         fan_list, total_fan_count = get_fan_list(st.session_state.room_id)
         st.session_state.fan_list = fan_list
         st.session_state.total_fan_count = total_fan_count
@@ -306,7 +297,6 @@ if st.session_state.is_tracking:
         st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※約7秒ごとに自動更新されます。</p>", unsafe_allow_html=True)
 
         col_comment, col_gift, col_fan = st.columns(3)
-
         with col_comment:
             st.markdown("### 📝 コメント")
             with st.container(border=True, height=500):
@@ -320,7 +310,6 @@ if st.session_state.is_tracking:
                         comment_text = log.get('comment', '')
                         created_at = datetime.datetime.fromtimestamp(log.get('created_at', 0), JST).strftime("%H:%M:%S")
                         avatar_url = log.get('avatar_url', '')
-                        
                         html = f"""
                         <div class="comment-item">
                             <div class="comment-item-row">
@@ -337,7 +326,6 @@ if st.session_state.is_tracking:
                         st.markdown(html, unsafe_allow_html=True)
                 else:
                     st.info("コメントがありません。")
-
         with col_gift:
             st.markdown("### 🎁 スペシャルギフト")
             with st.container(border=True, height=500):
@@ -351,21 +339,15 @@ if st.session_state.is_tracking:
                         gift_point = gift_info.get('point', 0)
                         gift_count = log.get('num', 0)
                         total_point = gift_point * gift_count
-                        
                         highlight_class = ""
                         if total_point >= 300000: highlight_class = "highlight-300000"
                         elif total_point >= 100000: highlight_class = "highlight-100000"
                         elif total_point >= 60000: highlight_class = "highlight-60000"
                         elif total_point >= 30000: highlight_class = "highlight-30000"
                         elif total_point >= 10000: highlight_class = "highlight-10000"
-                        
                         gift_image_url = log.get('image', gift_info.get('image', ''))
                         avatar_id = log.get('avatar_id', None)
-                        if avatar_id:
-                            avatar_url = f"https://static.showroom-live.com/image/avatar/{avatar_id}.png"
-                        else:
-                            avatar_url = DEFAULT_AVATAR
-
+                        avatar_url = f"https://static.showroom-live.com/image/avatar/{avatar_id}.png" if avatar_id else DEFAULT_AVATAR
                         html = f"""
                         <div class="gift-item {highlight_class}">
                             <div class="gift-item-row">
@@ -386,7 +368,6 @@ if st.session_state.is_tracking:
                         st.markdown(html, unsafe_allow_html=True)
                 else:
                     st.info("ギフトがありません。")
-
         with col_fan:
             st.markdown("### 🏆 ファンリスト")
             with st.container(border=True, height=500):
@@ -408,7 +389,7 @@ if st.session_state.is_tracking:
                 else:
                     st.info("ファンデータがありません。")
     else:
-        st.warning("指定されたルームIDが見つからないか、現在配信中ではありません。")
+        st.warning("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
         st.session_state.is_tracking = False
 
 st.markdown("---")
