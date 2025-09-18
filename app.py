@@ -279,10 +279,16 @@ if st.session_state.is_tracking:
     
     if target_room_info:
         room_name = target_room_info.get('room_name', None)
-        display_name = room_name if room_name else f"ルームID {st.session_state.room_id}"
+        room_id = st.session_state.room_id
+        profile_url = f"https://www.showroom-live.com/room/profile?room_id={room_id}"
         
-        # 修正箇所: st.success()をカスタムHTMLに置き換え
-        st.markdown(f'<div class="tracking-success">{display_name} の配信をトラッキング中です！</div>', unsafe_allow_html=True)
+        if room_name:
+            display_content = room_name
+        else:
+            # ルーム名が取得できない場合、ルームIDをリンクとして表示
+            display_content = f'<a href="{profile_url}" target="_blank" style="color: inherit; text-decoration: none;">ルームID {room_id}</a>'
+
+        st.markdown(f'<div class="tracking-success">{display_content} の配信をトラッキング中です！</div>', unsafe_allow_html=True)
         
         st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
         
