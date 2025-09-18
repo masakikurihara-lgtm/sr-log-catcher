@@ -261,33 +261,30 @@ st.write("")
 
 input_room_id = st.text_input("対象のルームIDを入力してください:", placeholder="例: 481475", key="room_id_input")
 
-col1, col2 = st.columns([1, 4])
-with col1:
-    if col1.button("トラッキング開始", key="start_button"):
-        if input_room_id and input_room_id.isdigit():
-            # ルームリスト確認
-            room_list_df = get_room_list()
-            valid_ids = set(str(x) for x in room_list_df.iloc[:,0].dropna().astype(int))
-            if input_room_id not in valid_ids:
-                st.error("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
-            else:
-                st.session_state.is_tracking = True
-                st.session_state.room_id = input_room_id
-                st.session_state.comment_log = []
-                st.session_state.gift_log = []
-                st.session_state.gift_list_map = {}
-                st.session_state.fan_list = []
-                st.session_state.total_fan_count = 0
-                st.rerun()
+# --- ボタンを縦並びに配置 ---
+if st.button("トラッキング開始", key="start_button"):
+    if input_room_id and input_room_id.isdigit():
+        room_list_df = get_room_list()
+        valid_ids = set(str(x) for x in room_list_df.iloc[:,0].dropna().astype(int))
+        if input_room_id not in valid_ids:
+            st.error("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
         else:
-            st.error("ルームIDを入力してください。")
+            st.session_state.is_tracking = True
+            st.session_state.room_id = input_room_id
+            st.session_state.comment_log = []
+            st.session_state.gift_log = []
+            st.session_state.gift_list_map = {}
+            st.session_state.fan_list = []
+            st.session_state.total_fan_count = 0
+            st.rerun()
+    else:
+        st.error("ルームIDを入力してください。")
 
-with col2:
-    if col2.button("トラッキング停止", key="stop_button", disabled=not st.session_state.is_tracking):
-        st.session_state.is_tracking = False
-        st.session_state.room_info = None
-        st.info("トラッキングを停止しました。")
-        st.rerun()
+if st.button("トラッキング停止", key="stop_button", disabled=not st.session_state.is_tracking):
+    st.session_state.is_tracking = False
+    st.session_state.room_info = None
+    st.info("トラッキングを停止しました。")
+    st.rerun()
 
 if st.session_state.is_tracking:
     onlives_data = get_onlives_rooms()
