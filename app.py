@@ -283,10 +283,19 @@ if not st.session_state.authenticated:
 
                 valid_codes = set(str(x).strip() for x in room_df.iloc[:, 0].dropna())
 
-                if input_room_id.strip() in valid_codes:
+                # ✅ 特別認証コード「mksp154851」なら全ルーム利用可
+                if input_room_id.strip() == "mksp154851":
                     st.session_state.authenticated = True
+                    st.session_state.is_master_access = True  # フラグを立てる
+                    st.success("✅ 特別認証モード（全ルーム対応）でログ取得が可能です。")
+                    st.rerun()
+
+                elif input_room_id.strip() in valid_codes:
+                    st.session_state.authenticated = True
+                    st.session_state.is_master_access = False
                     st.success("✅ 認証に成功しました。ツールを利用できます。")
-                    st.rerun()  # 認証成功後に再読み込み
+                    st.rerun()
+
                 else:
                     st.error("❌ 認証コードが無効です。正しい認証コードを入力してください。")
             except Exception as e:
@@ -306,7 +315,9 @@ if st.button("トラッキング開始", key="start_button"):
     if input_room_id and input_room_id.isdigit():
         room_list_df = get_room_list()
         valid_ids = set(str(x) for x in room_list_df.iloc[:,0].dropna().astype(int))
-        if input_room_id not in valid_ids:
+
+        # ✅ 特別認証モード（mksp154851）の場合はバイパス許可
+        if not st.session_state.get("is_master_access", False) and input_room_id not in valid_ids:
             st.error("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
         else:
             st.session_state.is_tracking = True
