@@ -5,50 +5,48 @@ import pytz
 import datetime
 import io
 from streamlit_autorefresh import st_autorefresh
-import tempfile
+import ftplib
+import io
+import datetime
 import os
-from ftplib import FTP
 
-def upload_to_ftp(file_content: bytes, filename: str):
-    """FTPサーバーにファイルをアップロードし、古いログを自動削除"""
+def upload_csv_to_ftp(filename: str, csv_buffer: io.BytesIO):
+    """Secretsに登録されたFTP設定を使ってCSVをアップロード"""
+    ftp_info = st.secrets["ftp"]
     try:
-        ftp_conf = st.secrets["ftp"]
-        host = ftp_conf["host"]
-        user = ftp_conf["user"]
-        passwd = ftp_conf["password"]
-        with FTP(host) as ftp:
-            ftp.login(user, passwd)
-            # 保存先ディレクトリ（英語名推奨）
-            ftp.cwd("/rokudouji.net/mksoul/showroom_onlives_logs")
+        ftp = ftplib.FTP(ftp_info["host"])
+        ftp.login(ftp_info["user"], ftp_info["password"])
+        ftp.cwd("/rokudouji.net/mksoul/showroom_onlives_logs")
 
-            # 一時ファイルを作ってアップロード
-            with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
-                tmpfile.write(file_content)
-                tmpfile.flush()
-                tmpname = tmpfile.name
-            with open(tmpname, "rb") as f:
-                ftp.storbinary(f"STOR {filename}", f)
-            os.remove(tmpname)
+        # アップロード
+        csv_buffer.seek(0)
+        ftp.storbinary(f"STOR {filename}", csv_buffer)
 
-            # --- 古いファイル(48時間超) を削除 ---
-            files = ftp.nlst()
-            for fname in files:
-                try:
-                    mdtm_resp = ftp.sendcmd(f"MDTM {fname}")
-                    # MDTM 応答例: "213 YYYYMMDDhhmmss"
-                    timestamp_str = mdtm_resp[4:]
-                    mtime = datetime.datetime.strptime(timestamp_str, "%Y%m%d%H%M%S")
-                    # 上の時間は UTC かサーバー時間か不確定なので補正が必要な場合あり
-                    age_hours = (datetime.datetime.utcnow() - mtime).total_seconds() / 3600
-                    if age_hours > 48:
-                        ftp.delete(fname)
-                except Exception:
-                    # 削除に失敗しても続行
-                    pass
-        # 成功通知
-        st.sidebar.success(f"FTP 保存完了: {filename}")
+        # --- 古いファイル削除（48時間以上前） ---
+        file_list = []
+        ftp.retrlines("LIST", file_list.append)
+        now = datetime.datetime.now()
+        for entry in file_list:
+            parts = entry.split(maxsplit=8)
+            if len(parts) < 9:
+                continue
+            name = parts[-1]
+            if not name.endswith(".csv"):
+                continue
+            # 日時文字列が含まれる形式なら抽出
+            try:
+                time_str = name.split("_")[-1].replace(".csv", "")
+                file_dt = datetime.datetime.strptime(time_str, "%Y%m%d_%H%M%S")
+                if (now - file_dt).total_seconds() > 48 * 3600:
+                    ftp.delete(name)
+            except Exception:
+                continue
+
+        ftp.quit()
+        st.success(f"✅ FTPに保存完了: {filename}")
     except Exception as e:
-        st.sidebar.error(f"FTPアップロード失敗: {e}")
+        st.error(f"FTP保存中にエラー: {e}")
+
 
 def auto_backup_if_needed():
     """100件ごとまたはトラッキング停止時にFTPへログをバックアップ"""
@@ -409,12 +407,28 @@ if st.button("トラッキング開始", key="start_button"):
         st.error("ルームIDを入力してください。")
 
 if st.button("トラッキング停止", key="stop_button", disabled=not st.session_state.is_tracking):
-    # 停止前にバックアップ
-    auto_backup_if_needed()
+    if st.session_state.is_tracking:
+        # コメントログ保存
+        if st.session_state.comment_log:
+            comment_df = pd.DataFrame(st.session_state.comment_log)
+            comment_df = comment_df.rename(columns={'name': 'ユーザー名', 'comment': 'コメント内容', 'created_at': 'コメント時間', 'user_id': 'ユーザーID'})
+            buf = io.BytesIO()
+            comment_df.to_csv(buf, index=False, encoding="utf-8-sig")
+            upload_csv_to_ftp(f"comment_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv", buf)
+
+        # ギフトログ保存
+        if st.session_state.gift_log:
+            gift_df = pd.DataFrame(st.session_state.gift_log)
+            gift_df = gift_df.rename(columns={'name': 'ユーザー名', 'num': '個数', 'point': 'ポイント', 'created_at': 'ギフト時間', 'user_id': 'ユーザーID'})
+            buf = io.BytesIO()
+            gift_df.to_csv(buf, index=False, encoding="utf-8-sig")
+            upload_csv_to_ftp(f"gift_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv", buf)
+
     st.session_state.is_tracking = False
     st.session_state.room_info = None
-    st.info("トラッキングを停止しました。ログを保存しました。")
+    st.info("トラッキングを停止しました。")
     st.rerun()
+
 
 if st.session_state.is_tracking:
     onlives_data = get_onlives_rooms()
@@ -437,7 +451,38 @@ if st.session_state.is_tracking:
         st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
         st.session_state.comment_log = get_and_update_log("comment", st.session_state.room_id)
         st.session_state.gift_log = get_and_update_log("gift", st.session_state.room_id)
-        auto_backup_if_needed()
+        # コメントログ自動保存
+        if len(st.session_state.comment_log) > 0 and len(st.session_state.comment_log) % 100 == 0:
+            comment_df = pd.DataFrame([
+                {
+                    "コメント時間": datetime.datetime.fromtimestamp(log.get("created_at", 0), JST).strftime("%Y-%m-%d %H:%M:%S"),
+                    "ユーザー名": log.get("name", ""),
+                    "コメント内容": log.get("comment", ""),
+                    "ユーザーID": log.get("user_id", "")
+                }
+                for log in st.session_state.comment_log
+            ])
+            buf = io.BytesIO()
+            comment_df.to_csv(buf, index=False, encoding="utf-8-sig")
+            upload_csv_to_ftp(f"comment_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv", buf)
+
+        # ギフトログ自動保存
+        if len(st.session_state.gift_log) > 0 and len(st.session_state.gift_log) % 100 == 0:
+            gift_df = pd.DataFrame([
+                {
+                    "ギフト時間": datetime.datetime.fromtimestamp(log.get("created_at", 0), JST).strftime("%Y-%m-%d %H:%M:%S"),
+                    "ユーザー名": log.get("name", ""),
+                    "ギフト名": st.session_state.gift_list_map.get(str(log.get("gift_id")), {}).get("name", ""),
+                    "個数": log.get("num", ""),
+                    "ポイント": st.session_state.gift_list_map.get(str(log.get("gift_id")), {}).get("point", 0),
+                    "ユーザーID": log.get("user_id", "")
+                }
+                for log in st.session_state.gift_log
+            ])
+            buf = io.BytesIO()
+            gift_df.to_csv(buf, index=False, encoding="utf-8-sig")
+            upload_csv_to_ftp(f"gift_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv", buf)
+        #auto_backup_if_needed()
         st.session_state.gift_list_map = get_gift_list(st.session_state.room_id)
         fan_list, total_fan_count = get_fan_list(st.session_state.room_id)
         st.session_state.fan_list = fan_list
