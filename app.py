@@ -558,12 +558,23 @@ if st.session_state.is_tracking:
         st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
         st.session_state.comment_log = get_and_update_log("comment", st.session_state.room_id)
         st.session_state.gift_log = get_and_update_log("gift", st.session_state.room_id)
+        import math
+
         # コメントログ自動保存
         prev_comment_count = st.session_state.get("prev_comment_count", 0)
         current_comment_count = len(st.session_state.comment_log)
-        if current_comment_count >= prev_comment_count + 100:
+
+        # 💡 修正後の保存しきい値: prev_comment_countを次の100の倍数に丸めた値
+        # 例: prev_countが105の場合、次の保存しきい値は200
+        # 例: prev_countが100の場合、次の保存しきい値は200
+        next_save_threshold = math.ceil((prev_comment_count + 1) / 100) * 100
+
+        # 🌟 条件判定: 現在の総数が次の100の倍数のしきい値以上になったら保存
+        if current_comment_count >= next_save_threshold:
             if current_comment_count > 0:
                 comment_df = pd.DataFrame([
+                    # ... DataFrame生成の処理は省略 ...
+                    # 既存のコードのまま、全ログをDataFrameに変換
                     {
                         "コメント時間": datetime.datetime.fromtimestamp(log.get("created_at", 0), JST).strftime("%Y-%m-%d %H:%M:%S"),
                         "ユーザー名": log.get("name", ""),
@@ -573,10 +584,14 @@ if st.session_state.is_tracking:
                     for log in st.session_state.comment_log
                     if not any(keyword in log.get("name", "") or keyword in log.get("comment", "") for keyword in SYSTEM_COMMENT_KEYWORDS)
                 ])
+                
                 buf = io.BytesIO()
                 comment_df.to_csv(buf, index=False, encoding="utf-8-sig")
                 upload_csv_to_ftp(f"comment_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv", buf)
-                st.session_state.prev_comment_count = current_comment_count
+                
+                # 🌟 変更点: 次に保存すべき件数 (100の倍数) に更新する
+                # ここで `current_comment_count` ではなく `next_save_threshold` を使用
+                st.session_state.prev_comment_count = next_save_threshold
 
         # ギフトログ自動保存
         prev_gift_count = st.session_state.get("prev_gift_count", 0)
