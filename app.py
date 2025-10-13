@@ -5,6 +5,83 @@ import pytz
 import datetime
 import io
 from streamlit_autorefresh import st_autorefresh
+import tempfile
+import os
+from ftplib import FTP
+
+def upload_to_ftp(file_content: bytes, filename: str):
+    """FTPサーバーにファイルをアップロードし、古いログを自動削除"""
+    try:
+        ftp_conf = st.secrets["ftp"]
+        host = ftp_conf["host"]
+        user = ftp_conf["user"]
+        passwd = ftp_conf["password"]
+        with FTP(host) as ftp:
+            ftp.login(user, passwd)
+            # 保存先ディレクトリ（英語名推奨）
+            ftp.cwd("/public_html/mksoul/showroom_onlives_logs")
+
+            # 一時ファイルを作ってアップロード
+            with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
+                tmpfile.write(file_content)
+                tmpfile.flush()
+                tmpname = tmpfile.name
+            with open(tmpname, "rb") as f:
+                ftp.storbinary(f"STOR {filename}", f)
+            os.remove(tmpname)
+
+            # --- 古いファイル(48時間超) を削除 ---
+            files = ftp.nlst()
+            for fname in files:
+                try:
+                    mdtm_resp = ftp.sendcmd(f"MDTM {fname}")
+                    # MDTM 応答例: "213 YYYYMMDDhhmmss"
+                    timestamp_str = mdtm_resp[4:]
+                    mtime = datetime.datetime.strptime(timestamp_str, "%Y%m%d%H%M%S")
+                    # 上の時間は UTC かサーバー時間か不確定なので補正が必要な場合あり
+                    age_hours = (datetime.datetime.utcnow() - mtime).total_seconds() / 3600
+                    if age_hours > 48:
+                        ftp.delete(fname)
+                except Exception:
+                    # 削除に失敗しても続行
+                    pass
+        # 成功通知
+        st.sidebar.success(f"FTP 保存完了: {filename}")
+    except Exception as e:
+        st.sidebar.error(f"FTPアップロード失敗: {e}")
+
+def auto_backup_if_needed():
+    """100件ごとまたはトラッキング停止時にFTPへログをバックアップ"""
+    room = st.session_state.room_id
+    # 必要ログが無ければスキップ
+    if not room:
+        return
+
+    # 条件：コメント＋ギフトの合計が100件ごと または トラッキング停止時
+    total = len(st.session_state.comment_log) + len(st.session_state.gift_log)
+    if total == 0:
+        return
+
+    # トラッキング停止時強制保存 or 100件ごと保存
+    if (not st.session_state.is_tracking) or (total % 100 == 0):
+        timestamp = datetime.datetime.now(JST).strftime("%Y%m%d_%H%M%S")
+        filename = f"srlog_{room}_{timestamp}.csv"
+        buf = io.StringIO()
+        # コメントログ
+        if st.session_state.comment_log:
+            df_c = pd.DataFrame(st.session_state.comment_log)
+            buf.write("### Comments\n")
+            df_c.to_csv(buf, index=False, encoding='utf-8-sig')
+        # ギフトログ
+        if st.session_state.gift_log:
+            buf.write("\n### Gifts\n")
+            df_g = pd.DataFrame(st.session_state.gift_log)
+            df_g.to_csv(buf, index=False, encoding='utf-8-sig')
+
+        content = buf.getvalue().encode("utf-8-sig")
+        upload_to_ftp(content, filename)
+
+
 
 # ページ設定
 st.set_page_config(
@@ -332,9 +409,11 @@ if st.button("トラッキング開始", key="start_button"):
         st.error("ルームIDを入力してください。")
 
 if st.button("トラッキング停止", key="stop_button", disabled=not st.session_state.is_tracking):
+    # 停止前にバックアップ
+    auto_backup_if_needed()
     st.session_state.is_tracking = False
     st.session_state.room_info = None
-    st.info("トラッキングを停止しました。")
+    st.info("トラッキングを停止しました。ログを保存しました。")
     st.rerun()
 
 if st.session_state.is_tracking:
@@ -358,6 +437,7 @@ if st.session_state.is_tracking:
         st_autorefresh(interval=7000, limit=None, key="dashboard_refresh")
         st.session_state.comment_log = get_and_update_log("comment", st.session_state.room_id)
         st.session_state.gift_log = get_and_update_log("gift", st.session_state.room_id)
+        auto_backup_if_needed()
         st.session_state.gift_list_map = get_gift_list(st.session_state.room_id)
         fan_list, total_fan_count = get_fan_list(st.session_state.room_id)
         st.session_state.fan_list = fan_list
