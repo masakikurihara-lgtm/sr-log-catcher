@@ -593,10 +593,18 @@ if st.session_state.is_tracking:
                 # ここで `current_comment_count` ではなく `next_save_threshold` を使用
                 st.session_state.prev_comment_count = next_save_threshold
 
+        import math # mathモジュールをインポートしてください
+
         # ギフトログ自動保存
         prev_gift_count = st.session_state.get("prev_gift_count", 0)
         current_gift_count = len(st.session_state.gift_log)
-        if current_gift_count >= prev_gift_count + 100:
+
+        # 🌟 修正点1: 次に保存を実行すべき100の倍数を計算
+        # 例: prev_gift_countが105の場合、next_save_thresholdは200になる
+        next_save_threshold = math.ceil((prev_gift_count + 1) / 100) * 100
+
+        # 🌟 修正点2: 条件判定を次の100の倍数に達したかどうかに変更
+        if current_gift_count >= next_save_threshold:
             if current_gift_count > 0:
                 gift_df = pd.DataFrame([
                     {
@@ -609,10 +617,14 @@ if st.session_state.is_tracking:
                     }
                     for log in st.session_state.gift_log
                 ])
+                
                 buf = io.BytesIO()
                 gift_df.to_csv(buf, index=False, encoding="utf-8-sig")
                 upload_csv_to_ftp(f"gift_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv", buf)
-                st.session_state.prev_gift_count = current_gift_count
+                
+                # 🌟 修正点3: prev_gift_countを、実際に保存したときの総数ではなく、
+                # 次の保存しきい値（100の倍数）に強制的に更新する
+                st.session_state.prev_gift_count = next_save_threshold
 
         #auto_backup_if_needed()
         st.session_state.gift_list_map = get_gift_list(st.session_state.room_id)
