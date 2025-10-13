@@ -19,7 +19,7 @@ def upload_to_ftp(file_content: bytes, filename: str):
         with FTP(host) as ftp:
             ftp.login(user, passwd)
             # 保存先ディレクトリ（英語名推奨）
-            ftp.cwd("/public_html/mksoul/showroom_onlives_logs")
+            ftp.cwd("/rokudouji.net/mksoul/showroom_onlives_logs")
 
             # 一時ファイルを作ってアップロード
             with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
