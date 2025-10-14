@@ -736,6 +736,7 @@ if st.session_state.is_tracking:
 st.markdown("---")
 st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
 st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※データは現在{len(st.session_state.comment_log)}件のコメントと{len(st.session_state.gift_log)}件のスペシャルギフトと{st.session_state.total_fan_count}名のファンのデータが蓄積されています。</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※誤ってリロード（再読み込み）してしまった、閉じてしまった等でダウンロードせずに消失してしまった場合、24時間以内に運営ご相談いただければ、復元・ログ取得できる可能性があります。</p>", unsafe_allow_html=True)
 
 comment_cols = ['コメント時間', 'ユーザー名', 'コメント内容', 'ユーザーID']
 gift_cols = ['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']
