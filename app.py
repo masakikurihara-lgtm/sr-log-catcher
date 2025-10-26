@@ -407,7 +407,11 @@ def get_room_list():
 
 # --- UI構築 ---
 
-st.markdown("<h1 style='font-size:2.5em;'>🎤 SHOWROOM 配信ログ収集ツール</h1>", unsafe_allow_html=True)
+#st.markdown("<h1 style='font-size:2.5em;'>🎤 SHOWROOM 配信ログ収集ツール</h1>", unsafe_allow_html=True)
+st.markdown(
+    "<h1 style='font-size:28px; text-align:center; color:#1f2937;'>🎤 SHOWROOM 配信ログ収集ツール</h1>",
+    unsafe_allow_html=True
+)
 st.write("配信中のコメント、スペシャルギフト、ファンリストをリアルタイムで収集し、ログをダウンロードできます。")
 st.write("")
 
