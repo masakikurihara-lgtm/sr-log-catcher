@@ -418,7 +418,7 @@ st.write("")
 
 # ▼▼ 認証ステップ ▼▼
 if not st.session_state.authenticated:
-    st.markdown("#### 🔑 認証コードを入力してください")
+    st.markdown("##### 🔑 認証コードを入力してください")
     input_room_id = st.text_input(
         "認証コードを入力してください:",
         placeholder="",
