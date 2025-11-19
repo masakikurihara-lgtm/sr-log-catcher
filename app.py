@@ -880,14 +880,23 @@ if st.session_state.gift_log:
         display_rows.append({
             'ユーザー名': user if user != prev_user else '',
             'ギフト名': row['ギフト名'],
-            '個数': row['個数'],
+            '個数（合計）': row['個数'],
             'ポイント': row['ポイント']
         })
         prev_user = user
 
     final_user_gift_df = pd.DataFrame(display_rows)
 
-    st.markdown("### 🎁 スペシャルギフト一覧表（ユーザー単位で集計）")
+    # st.markdown("### 🎁 スペシャルギフト一覧表（ユーザー単位で集計）")
+    st.markdown(
+        """
+        <h3 style="margin-bottom:6px;">
+            🎁 スペシャルギフト一覧表
+            <span style="font-size:0.7em; opacity:0.8;">（ユーザー単位で集計）</span>
+        </h3>
+        """,
+        unsafe_allow_html=True
+    )
     st.dataframe(final_user_gift_df, use_container_width=True, hide_index=True)
 
 # ▲▲▲ 追加機能ここまで ▲▲▲
