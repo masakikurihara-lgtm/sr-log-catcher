@@ -865,17 +865,25 @@ if st.session_state.gift_log:
     )
 
     # 表示用（ユーザー名を1行目のみ残して以降空白にする）
+    # 表示用（groupby ではなく、自前で順序維持して展開する）
     display_rows = []
-    for user, df_user in grouped.groupby(['ユーザー名', 'ユーザーID']):
-        first = True
-        for _, row in df_user.iterrows():
-            display_rows.append({
-                'ユーザー名': row['ユーザー名'] if first else '',
-                'ギフト名': row['ギフト名'],
-                '個数': row['個数'],
-                'ポイント': row['ポイント']
-            })
-            first = False
+    # grouped の中で、ユーザー総ポイントで既に並んでいるのでその順を使う
+    grouped_sorted = grouped.sort_values(
+        by=['ユーザー総ポイント', 'ポイント'],
+        ascending=[False, False]
+    )
+
+    # ユーザーごとに順序を守りながら行を作成する
+    prev_user = None
+    for _, row in grouped_sorted.iterrows():
+        user = row['ユーザー名']
+        display_rows.append({
+            'ユーザー名': user if user != prev_user else '',
+            'ギフト名': row['ギフト名'],
+            '個数': row['個数'],
+            'ポイント': row['ポイント']
+        })
+        prev_user = user
 
     final_user_gift_df = pd.DataFrame(display_rows)
 
