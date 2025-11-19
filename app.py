@@ -808,6 +808,84 @@ else:
 
 st.markdown("---")
 
+# ▼▼▼ ここから追加機能：ユーザー単位ギフト集計 ▼▼▼
+
+if st.session_state.gift_log:
+    gift_df2 = pd.DataFrame(st.session_state.gift_log)
+
+    # created_at の変換
+    gift_df2['created_at'] = pd.to_datetime(
+        gift_df2['created_at'], unit='s'
+    ).dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    # ギフト名・ポイントを gift_list_map から補完
+    gift_df2['gift_id'] = gift_df2['gift_id'].astype(str)
+    gift_info_df2 = pd.DataFrame.from_dict(
+        st.session_state.gift_list_map, orient='index'
+    )
+    gift_info_df2.index = gift_info_df2.index.astype(str)
+
+    gift_df2 = (
+        gift_df2.set_index('gift_id')
+                .join(gift_info_df2, on='gift_id',
+                      lsuffix='_user_data', rsuffix='_gift_info')
+                .reset_index()
+    )
+
+    # カラム整形
+    gift_df2 = gift_df2.rename(columns={
+        'name_user_data': 'ユーザー名',
+        'name_gift_info': 'ギフト名',
+        'num': '個数',
+        'point': 'ポイント',
+        'user_id': 'ユーザーID'
+    })
+
+    # ---- 集計処理 ----
+    grouped = (
+        gift_df2.groupby(['ユーザー名', 'ユーザーID', 'ギフト名', 'ポイント'], as_index=False)
+                .agg({'個数': 'sum'})
+    )
+
+    # ユーザーごとの合計ポイントを計算
+    grouped['合計ポイント'] = grouped['個数'] * grouped['ポイント']
+
+    # ユーザー単位の総ポイント（ソート用）
+    user_total = grouped.groupby(['ユーザー名', 'ユーザーID'])['合計ポイント'].sum().reset_index()
+    user_total = user_total.rename(columns={'合計ポイント': 'ユーザー総ポイント'})
+
+    grouped = grouped.merge(user_total, on=['ユーザー名', 'ユーザーID'], how='left')
+
+    # ソート：
+    # 1) ユーザー総ポイント（降順）
+    # 2) ギフトポイント（降順）
+    grouped = grouped.sort_values(
+        by=['ユーザー総ポイント', 'ポイント'],
+        ascending=[False, False]
+    )
+
+    # 表示用（ユーザー名を1行目のみ残して以降空白にする）
+    display_rows = []
+    for user, df_user in grouped.groupby(['ユーザー名', 'ユーザーID']):
+        first = True
+        for _, row in df_user.iterrows():
+            display_rows.append({
+                'ユーザー名': row['ユーザー名'] if first else '',
+                'ギフト名': row['ギフト名'],
+                '個数': row['個数'],
+                'ポイント': row['ポイント']
+            })
+            first = False
+
+    final_user_gift_df = pd.DataFrame(display_rows)
+
+    st.markdown("### 🎁 スペシャルギフト一覧表（ユーザー単位で集計）")
+    st.dataframe(final_user_gift_df, use_container_width=True, hide_index=True)
+
+# ▲▲▲ 追加機能ここまで ▲▲▲
+
+st.markdown("---")
+
 # ファンリスト一覧表
 if st.session_state.fan_list:
     fan_df = pd.DataFrame(st.session_state.fan_list)
