@@ -9,7 +9,6 @@ import ftplib
 import io
 import datetime
 import os
-from sr_free_gift_listener import FreeGiftListener
 
 
 def upload_csv_to_ftp(filename: str, csv_buffer: io.BytesIO):
@@ -369,20 +368,6 @@ def get_gift_list(room_id):
     except requests.exceptions.RequestException as e:
         st.error(f"ルームID {room_id} のギフトリスト取得中にエラーが発生しました: {e}")
         return {}
-
-import time
-
-def on_free_gift(data):
-    log = {
-        "created_at": int(time.time()),
-        "gift_id": data.get("gift_id"),
-        "num": data.get("count", 1),
-        "name": data.get("user_name", ""),
-        "user_id": data.get("user_id", ""),
-        "image": "",
-        "free": True
-    }
-    st.session_state.gift_log.append(log)
 
 
 def get_fan_list(room_id):
