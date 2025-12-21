@@ -80,6 +80,23 @@ def auto_backup_if_needed():
         upload_to_ftp(content, filename)
 
 
+def get_live_id_from_onlives(room_id: int):
+    onlives = get_onlives_rooms()
+    info = onlives.get(room_id)
+    if not info:
+        return None
+
+    # パターン1
+    if "live_id" in info:
+        return info["live_id"]
+
+    # パターン2
+    if "live_info" in info and "live_id" in info["live_info"]:
+        return info["live_info"]["live_id"]
+
+    return None
+
+
 # --- ▼ 共通FTP保存関数（コメント・ギフトログ用） ▼ ---
 def save_log_to_ftp(log_type: str):
     """
@@ -547,6 +564,11 @@ if st.session_state.is_tracking:
 
     if target_room_info:
         room_id = st.session_state.room_id
+        live_id = get_live_id_from_onlives(int(room_id))
+        st.session_state.live_id = live_id
+        st.write("live_id =", st.session_state.get("live_id"))
+
+
         # ルーム名取得
         try:
             prof = requests.get(f"https://www.showroom-live.com/api/room/profile?room_id={room_id}", headers=HEADERS, timeout=5).json()
