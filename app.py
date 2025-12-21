@@ -80,18 +80,6 @@ def auto_backup_if_needed():
         upload_to_ftp(content, filename)
 
 
-def get_live_id_from_room_profile(room_id: int):
-    url = f"https://www.showroom-live.com/api/room/profile?room_id={room_id}"
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=5)
-        r.raise_for_status()
-        data = r.json()
-        return data.get("live_id")
-    except Exception:
-        return None
-
-
-
 # --- ▼ 共通FTP保存関数（コメント・ギフトログ用） ▼ ---
 def save_log_to_ftp(log_type: str):
     """
@@ -559,11 +547,6 @@ if st.session_state.is_tracking:
 
     if target_room_info:
         room_id = st.session_state.room_id
-        live_id = get_live_id_from_room_profile(room_id)
-        st.session_state.live_id = live_id
-
-        st.warning(f"[DEBUG] room_id={room_id} / live_id={live_id}")
-
 
         # ルーム名取得
         try:
