@@ -80,21 +80,16 @@ def auto_backup_if_needed():
         upload_to_ftp(content, filename)
 
 
-def get_live_id_from_onlives(room_id: int):
-    onlives = get_onlives_rooms()
-    info = onlives.get(room_id)
-    if not info:
+def get_live_id_from_room_profile(room_id: int):
+    url = f"https://www.showroom-live.com/api/room/profile?room_id={room_id}"
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=5)
+        r.raise_for_status()
+        data = r.json()
+        return data.get("live_id")
+    except Exception:
         return None
 
-    # パターン1
-    if "live_id" in info:
-        return info["live_id"]
-
-    # パターン2
-    if "live_info" in info and "live_id" in info["live_info"]:
-        return info["live_info"]["live_id"]
-
-    return None
 
 
 # --- ▼ 共通FTP保存関数（コメント・ギフトログ用） ▼ ---
@@ -564,18 +559,10 @@ if st.session_state.is_tracking:
 
     if target_room_info:
         room_id = st.session_state.room_id
-        # target_room_info から直接 live_id を取得
-        live_id = None
-
-        if isinstance(target_room_info, dict):
-            if "live_id" in target_room_info:
-                live_id = target_room_info["live_id"]
-            elif "live_info" in target_room_info and isinstance(target_room_info["live_info"], dict):
-                live_id = target_room_info["live_info"].get("live_id")
-
+        live_id = get_live_id_from_room_profile(room_id)
         st.session_state.live_id = live_id
-        st.info(f"live_id = {live_id}")
 
+        st.warning(f"[DEBUG] room_id={room_id} / live_id={live_id}")
 
 
         # ルーム名取得
