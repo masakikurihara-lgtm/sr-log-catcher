@@ -564,9 +564,18 @@ if st.session_state.is_tracking:
 
     if target_room_info:
         room_id = st.session_state.room_id
-        live_id = get_live_id_from_onlives(int(room_id))
+        # target_room_info から直接 live_id を取得
+        live_id = None
+
+        if isinstance(target_room_info, dict):
+            if "live_id" in target_room_info:
+                live_id = target_room_info["live_id"]
+            elif "live_info" in target_room_info and isinstance(target_room_info["live_info"], dict):
+                live_id = target_room_info["live_info"].get("live_id")
+
         st.session_state.live_id = live_id
-        st.write("live_id =", st.session_state.get("live_id"))
+        st.info(f"live_id = {live_id}")
+
 
 
         # ルーム名取得
