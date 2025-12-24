@@ -9,11 +9,6 @@ import ftplib
 import io
 import datetime
 import os
-import websocket
-import threading
-import json
-import queue
-
 
 
 def upload_csv_to_ftp(filename: str, csv_buffer: io.BytesIO):
@@ -296,19 +291,6 @@ if 'onlives_data' not in st.session_state:
 if 'total_fan_count' not in st.session_state:
     st.session_state.total_fan_count = 0
 
-if "free_gift_log" not in st.session_state:
-    st.session_state.free_gift_log = []
-
-if "ws_queue" not in st.session_state:
-    st.session_state.ws_queue = queue.Queue()
-
-if "ws_thread" not in st.session_state:
-    st.session_state.ws_thread = None
-
-if "ws_running" not in st.session_state:
-    st.session_state.ws_running = False
-
-
 # --- API連携関数 ---
 
 def get_onlives_rooms():
@@ -417,69 +399,6 @@ def get_fan_list(room_id):
             break
     return fan_list, total_user_count
 
-
-
-def start_free_gift_ws(room_id: str):
-    """
-    無償ギフト取得用 WebSocket スレッド
-    """
-    def run():
-        try:
-            # 1. streaming_url 取得
-            info = requests.get(
-                f"https://www.showroom-live.com/api/live/streaming_url?room_id={room_id}",
-                headers=HEADERS,
-                timeout=5
-            ).json()
-
-            stream = info["streaming_url_list"][0]
-            ws_url = f"wss://{stream['host']}:{stream['port']}"
-            sub_key = stream["key"]
-
-            def on_open(ws):
-                ws.send(f"SUB {sub_key}")
-
-            def on_message(ws, message):
-                # MSG <roomid> <type> <json>
-                if not message.startswith("MSG"):
-                    return
-                try:
-                    _, _, event_type, payload = message.split(" ", 3)
-                    if event_type != "2":
-                        return
-
-                    data = json.loads(payload)
-                    if data.get("gt") != 1:
-                        return  # 無償ギフトのみ
-
-                    st.session_state.ws_queue.put({
-                        "created_at": data.get("t"),
-                        "user_id": data.get("u"),
-                        "name": data.get("n"),
-                        "gift_id": data.get("g"),
-                        "num": data.get("c", 1),
-                        "avatar_id": data.get("a"),
-                    })
-                except Exception:
-                    pass
-
-            ws = websocket.WebSocketApp(
-                ws_url,
-                on_open=on_open,
-                on_message=on_message
-            )
-            ws.run_forever()
-
-        except Exception:
-            pass
-
-    st.session_state.ws_running = True
-    th = threading.Thread(target=run, daemon=True)
-    st.session_state.ws_thread = th
-    th.start()
-
-
-
 # --- ルームリスト取得関数 ---
 def get_room_list():
     try:
@@ -557,7 +476,6 @@ if st.button("トラッキング開始", key="start_button"):
             st.error("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
         else:
             st.session_state.is_tracking = True
-            start_free_gift_ws(st.session_state.room_id)
             st.session_state.room_id = input_room_id
             st.session_state.comment_log = []
             st.session_state.gift_log = []
@@ -645,11 +563,6 @@ if st.session_state.is_tracking:
         st.markdown(f'<div class="tracking-success">{link_html} の配信をトラッキング中です！</div>', unsafe_allow_html=True)
 
         st_autorefresh(interval=10000, limit=None, key="dashboard_refresh")
-        while not st.session_state.ws_queue.empty():
-            st.session_state.free_gift_log.append(
-                st.session_state.ws_queue.get()
-            )
-
         st.session_state.comment_log = get_and_update_log("comment", st.session_state.room_id)
         st.session_state.gift_log = get_and_update_log("gift", st.session_state.room_id)
         import math
@@ -803,43 +716,6 @@ if st.session_state.is_tracking:
                         st.markdown(html, unsafe_allow_html=True)
                 else:
                     st.info("ギフトがありません。")
-        with col_gift:
-            st.markdown("### 🎁 無償ギフト")
-            with st.container(border=True, height=500):
-                if st.session_state.free_gift_log:
-                    for log in reversed(st.session_state.free_gift_log):
-                        created_at = datetime.datetime.fromtimestamp(
-                            log["created_at"], JST
-                        ).strftime("%H:%M:%S")
-
-                        avatar = (
-                            f"https://static.showroom-live.com/image/avatar/{log['avatar_id']}.png"
-                            if log.get("avatar_id") else DEFAULT_AVATAR
-                        )
-
-                        gift = st.session_state.gift_list_map.get(
-                            str(log["gift_id"]), {}
-                        )
-
-                        st.markdown(f"""
-                        <div class="gift-item">
-                          <div class="gift-item-row">
-                            <img src="{avatar}" class="gift-avatar"/>
-                            <div class="gift-content">
-                              <div class="gift-time">{created_at}</div>
-                              <div class="gift-user">{log['name']}</div>
-                              <div class="gift-info-row">
-                                <img src="{gift.get('image','')}" class="gift-image"/>
-                                ×{log['num']}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        <hr>
-                        """, unsafe_allow_html=True)
-                else:
-                    st.info("無償ギフトはまだありません。")
-
         with col_fan:
             st.markdown("### 🏆 ファンリスト")
             with st.container(border=True, height=500):
