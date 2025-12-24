@@ -4,3 +4,4 @@ pandas
 plotly
 pytz
 streamlit-autorefresh
+websocket-client
