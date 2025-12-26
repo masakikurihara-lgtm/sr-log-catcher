@@ -838,7 +838,7 @@ if st.session_state.is_tracking:
                         """
                         st.markdown(html, unsafe_allow_html=True)
                 else:
-                    st.info("コメントがありません。")
+                    st.info("コメントはまだありません。")
 
         with col_gift:
             st.markdown("#### 🎁 スペシャルギフト")
@@ -886,7 +886,7 @@ if st.session_state.is_tracking:
                         """
                         st.markdown(html, unsafe_allow_html=True)
                 else:
-                    st.info("ギフトがありません。")
+                    st.info("スペシャルギフトはまだありません。")
 
         with col_free_gift:
             st.markdown("#### 🎈 無償ギフト")
