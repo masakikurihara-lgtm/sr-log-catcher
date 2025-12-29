@@ -1103,8 +1103,8 @@ if st.session_state.is_tracking and st.session_state.room_id:
                 f_sum = f_raw.groupby(['user_id', 'gift_name', 'point'], as_index=False).agg({'num': 'sum', 'created_at': 'max', 'name': 'last'})
                 f_sum['合計Pt（※単純合計値）'] = (f_sum['num'] * pd.to_numeric(f_sum['point'])).astype(int)
                 f_sum['最新ギフト時間'] = pd.to_datetime(f_sum['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
-                f_sum = f_sum.rename(columns={'name': 'ユーザー名', 'gift_name': 'ギフト名', 'num': '個数', 'point': 'ポイント'}).sort_values('最新ギフト時間', ascending=False)
-                st.dataframe(f_sum[['最新ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', '合計Pt（※単純合計値）']], use_container_width=True, hide_index=True)
+                f_sum = f_sum.rename(columns={'name': 'ユーザー名', 'gift_name': 'ギフト名', 'num': '合計個数', 'point': 'ポイント'}).sort_values('最新ギフト時間', ascending=False)
+                st.dataframe(f_sum[['最新ギフト時間', 'ユーザー名', 'ギフト名', '合計個数', 'ポイント', '合計Pt（※単純合計値）']], use_container_width=True, hide_index=True)
 
             with st.expander("👤 ユーザー単位で集計 (総貢献Pt順)", expanded=False):
                 f_u_df = f_raw.copy()
@@ -1119,7 +1119,7 @@ if st.session_state.is_tracking and st.session_state.room_id:
                 for _, r in f_u_merged.iterrows():
                     f_u_rows.append({
                         'ユーザー名': latest_f_names[r['user_id']] if r['user_id'] != prev_f_id else '',
-                        'ギフト名': r['gift_name'], '個数': r['num'], 'ポイント': r['point'],
+                        'ギフト名': r['gift_name'], '合計個数': r['num'], 'ポイント': r['point'],
                         'ギフト単位Pt': int(r['line_pt']), '総貢献Pt（※単純合計値）': int(r['総Pt']) if r['user_id'] != prev_f_id else ''
                     })
                     prev_f_id = r['user_id']
@@ -1165,8 +1165,8 @@ if st.session_state.is_tracking and st.session_state.room_id:
                 all_sum = all_df.groupby(['user_id', 'gift_name', 'point'], as_index=False).agg({'num': 'sum', 'created_at_dt': 'max', 'name': 'last'})
                 all_sum['合計Pt（※単純合計値）'] = (all_sum['num'] * pd.to_numeric(all_sum['point'])).astype(int)
                 all_sum['最新ギフト時間'] = all_sum['created_at_dt'].dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
-                all_sum = all_sum.rename(columns={'name': 'ユーザー名', 'gift_name': 'ギフト名', 'num': '個数', 'point': 'ポイント'}).sort_values('最新ギフト時間', ascending=False)
-                st.dataframe(all_sum[['最新ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', '合計Pt（※単純合計値）']], use_container_width=True, hide_index=True)
+                all_sum = all_sum.rename(columns={'name': 'ユーザー名', 'gift_name': 'ギフト名', 'num': '合計個数', 'point': 'ポイント'}).sort_values('最新ギフト時間', ascending=False)
+                st.dataframe(all_sum[['最新ギフト時間', 'ユーザー名', 'ギフト名', '合計個数', 'ポイント', '合計Pt（※単純合計値）']], use_container_width=True, hide_index=True)
 
             with st.expander("👤 ユーザー単位で集計 (総貢献Pt順)", expanded=False):
                 all_u = all_df.copy()
@@ -1181,7 +1181,7 @@ if st.session_state.is_tracking and st.session_state.room_id:
                 for _, r in all_u_merged.iterrows():
                     all_u_rows.append({
                         'ユーザー名': latest_all_names[r['user_id']] if r['user_id'] != prev_all_id else '',
-                        'ギフト名': r['gift_name'], '個数': r['num'], 'ポイント': r['point'],
+                        'ギフト名': r['gift_name'], '合計個数': r['num'], 'ポイント': r['point'],
                         'ギフト単位Pt': int(r['line_pt']), '総貢献Pt（※単純合計値）': int(r['総Pt']) if r['user_id'] != prev_all_id else ''
                     })
                     prev_all_id = r['user_id']
