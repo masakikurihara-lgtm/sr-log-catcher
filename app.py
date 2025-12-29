@@ -361,30 +361,45 @@ def get_and_update_log(log_type, room_id):
         st.warning(f"ルームID {room_id} の{log_type}ログ取得中にエラーが発生しました。配信中か確認してください。")
         return st.session_state.get(f"{log_type}_log", [])
 
-def get_gift_list(room_id):
-    if st.session_state.gift_list_map:
+def get_gift_list(room_id, force_update=False):
+    """
+    ギフトリストを取得しキャッシュする。
+    force_update=True、または未知のギフトIDに遭遇した際に再取得を行う。
+    """
+    # キャッシュがあり、強制更新でない場合はそのまま返す
+    if st.session_state.gift_list_map and not force_update:
         return st.session_state.gift_list_map
+
     url = f"{GIFT_LIST_API_URL}?room_id={room_id}"
     try:
         response = requests.get(url, headers=HEADERS, timeout=5)
         response.raise_for_status()
         data = response.json()
-        gift_list_map = {}
-        for gift in data.get('normal', []) + data.get('special', []):
-            try:
-                point_value = int(gift.get('point', 0))
-            except (ValueError, TypeError):
-                point_value = 0
-            gift_list_map[str(gift['gift_id'])] = {
-                'name': gift.get('gift_name', 'N/A'),
-                'point': point_value,
-                'image': gift.get('image', '')
-            }
-        st.session_state.gift_list_map = gift_list_map
-        return gift_list_map
-    except requests.exceptions.RequestException as e:
-        st.error(f"ルームID {room_id} のギフトリスト取得中にエラーが発生しました: {e}")
-        return {}
+        
+        new_map = {}
+        # すべてのカテゴリ（normal, special, enquete, seasonal等）を網羅的に走査
+        for category_key in data.keys():
+            category_items = data.get(category_key, [])
+            if isinstance(category_items, list):
+                for gift in category_items:
+                    gid = str(gift.get('gift_id'))
+                    try:
+                        p = int(gift.get('point', 0))
+                    except (ValueError, TypeError):
+                        p = 0
+                    
+                    new_map[gid] = {
+                        'name': gift.get('gift_name', 'N/A'),
+                        'point': p,
+                        'image': gift.get('image', ''),
+                        'free': gift.get('free', False)
+                    }
+        
+        st.session_state.gift_list_map = new_map
+        return new_map
+    except Exception as e:
+        print(f"Gift List API Error: {e}")
+        return st.session_state.get('gift_list_map', {})
 
 
 def get_fan_list(room_id):
@@ -516,51 +531,51 @@ if st.button("トラッキング開始", key="start_button"):
         valid_ids = set(str(x) for x in room_list_df.iloc[:,0].dropna().astype(int))
 
         # ✅ 特別認証モード（mksp154851）の場合はバイパス許可
-        if not st.session_state.get("is_master_access", False) and input_room_id not in valid_ids:
+        is_master = st.session_state.get("is_master_access", False)
+        if not is_master and input_room_id not in valid_ids:
+            # エラー時は状態を更新せず、メッセージだけ出す（下の停止ボタンは非活性のまま残る）
             st.error("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
         else:
-            # --- 基本設定 ---
-            st.session_state.is_tracking = True
-            st.session_state.room_id = input_room_id
+            # 配信サーバー情報を取得
+            streaming_info = get_streaming_server_info(input_room_id)
             
-            # --- 既存ログの初期化 ---
-            st.session_state.comment_log = []
-            st.session_state.gift_log = []
-            st.session_state.gift_list_map = {}
-            st.session_state.fan_list = []
-            st.session_state.total_fan_count = 0
-            
-            # --- 新設：無償ギフト用の初期化 ---
-            st.session_state.free_gift_log = []
-            st.session_state.raw_free_gift_queue = []
-            
-            # 1. 無償ギフトマスター（名前・画像・ポイント）の取得
-            update_free_gift_master(input_room_id) # ← コメント解除
-            
-            # 2. WebSocket接続情報の取得
-            streaming_info = get_streaming_server_info(input_room_id) # ← コメント解除
-            
-            if streaming_info:
-                # 3. 既存の受信機が動いていれば停止
+            if not streaming_info:
+                # サーバー情報が取れない（配信中でない）場合もエラー表示のみ
+                st.error("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
+            else:
+                # --- 正常系：ここから下は配信中であることが確定した場合のみ実行 ---
+                st.session_state.is_tracking = True
+                st.session_state.room_id = input_room_id
+                
+                # --- 既存ログの初期化 ---
+                st.session_state.comment_log = []
+                st.session_state.gift_log = []
+                st.session_state.gift_list_map = {}
+                st.session_state.fan_list = []
+                st.session_state.total_fan_count = 0
+                st.session_state.free_gift_log = []
+                st.session_state.raw_free_gift_queue = []
+                
+                # 1. 無償ギフトマスターの取得
+                update_free_gift_master(input_room_id)
+                
+                # 2. 受信機の起動
                 if st.session_state.get("ws_receiver"):
                     try:
                         st.session_state.ws_receiver.stop()
                     except:
                         pass
                 
-                # 4. 無償ギフト受信機（WebSocket）をバックグラウンドで起動
-                # 引数名を free_gift_handler.py の定義（host, key）に合わせて修正します
                 receiver = FreeGiftReceiver(
                     room_id=input_room_id,
-                    host=streaming_info["host"],  # bcsvr_host から host に変更
-                    key=streaming_info["key"]    # bcsvr_key から key に変更
+                    host=streaming_info["host"],
+                    key=streaming_info["key"]
                 )
                 receiver.start()
                 st.session_state.ws_receiver = receiver
-            else:
-                st.warning("配信サーバー情報の取得に失敗したため、無償ギフトのリアルタイム取得はスキップされます。")
 
-            st.rerun()
+                # 成功時のみ画面を更新して「ログ詳細」を表示
+                st.rerun()
     else:
         st.error("ルームIDを入力してください。")
 
@@ -809,7 +824,7 @@ if st.session_state.is_tracking:
         col_comment, col_gift, col_free_gift, col_fan = st.columns(4)
 
         with col_comment:
-            st.markdown("##### 📝 コメント")
+            st.markdown("###### 📝 コメント")
             with st.container(border=True, height=500):
                 filtered_comments = [
                     log for log in st.session_state.comment_log 
@@ -841,21 +856,39 @@ if st.session_state.is_tracking:
                     st.info("コメントはまだありません。")
 
         with col_gift:
-            st.markdown("##### 🎁 スペシャルギフト")
+            st.markdown("###### 🎁 スペシャルギフト")
             with st.container(border=True, height=500):
-                if st.session_state.gift_log and st.session_state.gift_list_map:
-                    # 💡 表示制限コントロール
-                    display_gifts = st.session_state.gift_log # [:100]
+                if st.session_state.gift_log:
+                    # 最新のキャッシュを取得
+                    current_map = st.session_state.gift_list_map
+                    display_gifts = st.session_state.gift_log
+                    
                     for log in display_gifts:
-                        gift_info = st.session_state.gift_list_map.get(str(log.get('gift_id')), {})
+                        gid = str(log.get('gift_id'))
+                        
+                        # --- 💡 未知のギフトID対策ロジック ---
+                        if gid not in current_map:
+                            # リストにないIDが来たら、その場でAPIを叩き直す
+                            current_map = get_gift_list(st.session_state.room_id, force_update=True)
+                        # ----------------------------------
+
+                        gift_info = current_map.get(gid, {})
                         if not gift_info:
-                            continue
+                            # それでも取得できない場合のフォールバック
+                            gift_name = "未知のギフト"
+                            gift_point = 0
+                            gift_image_url = log.get('image', '')
+                        else:
+                            gift_name = gift_info.get('name', 'N/A')
+                            gift_point = gift_info.get('point', 0)
+                            gift_image_url = log.get('image', gift_info.get('image', ''))
+
                         user_name = log.get('name', '匿名ユーザー')
                         created_at = datetime.datetime.fromtimestamp(log.get('created_at', 0), JST).strftime("%H:%M:%S")
-                        gift_point = gift_info.get('point', 0)
                         gift_count = log.get('num', 0)
                         total_point = gift_point * gift_count
                         
+                        # 背景色の判定
                         highlight_class = ""
                         if total_point >= 300000: highlight_class = "highlight-300000"
                         elif total_point >= 100000: highlight_class = "highlight-100000"
@@ -863,7 +896,6 @@ if st.session_state.is_tracking:
                         elif total_point >= 30000: highlight_class = "highlight-30000"
                         elif total_point >= 10000: highlight_class = "highlight-10000"
                         
-                        gift_image_url = log.get('image', gift_info.get('image', ''))
                         avatar_id = log.get('avatar_id', None)
                         avatar_url = f"https://static.showroom-live.com/image/avatar/{avatar_id}.png" if avatar_id else DEFAULT_AVATAR
                         
@@ -875,10 +907,10 @@ if st.session_state.is_tracking:
                                     <div class="gift-time">{created_at}</div>
                                     <div class="gift-user">{user_name}</div>
                                     <div class="gift-info-row">
-                                        <img src="{gift_image_url}" class="gift-image" />
+                                        <img src="{gift_image_url}" class="gift-image" title="{gift_name}" />
                                         <span>×{gift_count}</span>
                                     </div>
-                                    <div>{gift_point} pt</div>
+                                    <div style="font-size: 0.9em; color: #555;">{total_point} pt</div>
                                 </div>
                             </div>
                         </div>
@@ -889,7 +921,7 @@ if st.session_state.is_tracking:
                     st.info("スペシャルギフトはまだありません。")
 
         with col_free_gift:
-            st.markdown("##### 🎈 無償ギフト")
+            st.markdown("###### 🎈 無償ギフト")
             with st.container(border=True, height=500):
                 if st.session_state.free_gift_log:
                     # 💡 表示制限コントロール
@@ -926,7 +958,7 @@ if st.session_state.is_tracking:
                     st.info("無償ギフトはまだありません。")
 
         with col_fan:
-            st.markdown("##### 🏆 ファンリスト")
+            st.markdown("###### 🏆 ファンリスト")
             with st.container(border=True, height=500):
                 if st.session_state.fan_list:
                     display_fans = st.session_state.fan_list
@@ -951,498 +983,229 @@ if st.session_state.is_tracking:
         st.warning("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
         st.session_state.is_tracking = False
 
-st.markdown("---")
-st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
-st.markdown(
-    f"<p style='font-size:12px; color:#a1a1a1;'>"
-    f"※データは現在{len(st.session_state.comment_log)}件のコメントと、"
-    f"{len(st.session_state.gift_log)}件のスペシャルギフト、"
-    f"{len(st.session_state.free_gift_log)}件の無償ギフト、"
-    f"および{st.session_state.total_fan_count}名のファンのデータが蓄積されています。<br />"
-    f"※誤ってリロード（再読み込み）してしまった、閉じてしまった等でダウンロードせずに消失してしまった場合、"
-    f"24時間以内に運営ご相談いただければ、復元・ログ取得できる可能性があります。</p>", 
-    unsafe_allow_html=True
-)
-#st.markdown(f"<p style='font-size:12px; color:#a1a1a1;'>※誤ってリロード（再読み込み）してしまった、閉じてしまった等でダウンロードせずに消失してしまった場合、24時間以内に運営ご相談いただければ、復元・ログ取得できる可能性があります。</p>", unsafe_allow_html=True)
-st.markdown("")
 
-comment_cols = ['コメント時間', 'ユーザー名', 'コメント内容', 'ユーザーID']
-gift_cols = ['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']
-fan_cols = ['順位', 'レベル', 'ユーザー名', 'ポイント', 'ユーザーID']
+if st.session_state.is_tracking and st.session_state.room_id:
 
-# コメント一覧表
-filtered_comments_df = [
-    log for log in st.session_state.comment_log 
-    if not any(keyword in log.get('name', '') or keyword in log.get('comment', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
-]
-if filtered_comments_df:
-    comment_df = pd.DataFrame(filtered_comments_df)
-    comment_df['created_at'] = pd.to_datetime(comment_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
-    comment_df['user_id'] = [log.get('user_id', 'N/A') for log in filtered_comments_df]
-    comment_df = comment_df.rename(columns={
-        'name': 'ユーザー名', 'comment': 'コメント内容', 'created_at': 'コメント時間', 'user_id': 'ユーザーID'
-    })
-    st.markdown("#### 📝 コメントログ一覧表")
-    st.dataframe(comment_df[comment_cols], use_container_width=True, hide_index=True)
-    
-    buffer = io.BytesIO()
-    comment_df[comment_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
-    buffer.seek(0)
-    st.download_button(
-        label="コメントログをCSVでダウンロード",
-        data=buffer,
-        file_name=f"comment_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-    )
-else:
-    st.info("ダウンロードできるコメントがありません。")
-
-st.markdown("---")
-
-# スペシャルギフトログ一覧表
-if st.session_state.gift_log:
-    gift_df = pd.DataFrame(st.session_state.gift_log)
-    gift_df['created_at'] = pd.to_datetime(gift_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
-    
-    if st.session_state.gift_list_map:
-        gift_info_df = pd.DataFrame.from_dict(st.session_state.gift_list_map, orient='index')
-        gift_info_df.index = gift_info_df.index.astype(str)
-        
-        gift_df['gift_id'] = gift_df['gift_id'].astype(str)
-        gift_df = gift_df.set_index('gift_id').join(gift_info_df, on='gift_id', lsuffix='_user_data', rsuffix='_gift_info').reset_index()
-
-    gift_df = gift_df.rename(columns={
-        'name_user_data': 'ユーザー名', 'name_gift_info': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'created_at': 'ギフト時間', 'user_id': 'ユーザーID'
-    })
-    st.markdown("#### 🎁 スペシャルギフトログ一覧表")
-    st.dataframe(gift_df[gift_cols], use_container_width=True, hide_index=True)
-    
-    buffer = io.BytesIO()
-    gift_df[gift_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
-    buffer.seek(0)
-    st.download_button(
-        label="スペシャルギフトログをCSVでダウンロード",
-        data=buffer,
-        file_name=f"gift_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-    )
-else:
-    st.info("ダウンロードできるスペシャルギフトがありません。")
-
-st.markdown("---")
-
-# ▼▼▼ スペシャルギフトログ一覧表 （ユーザー単位で集計） [名前変更対策版] ▼▼▼
-
-if st.session_state.gift_log:
-    gift_df2 = pd.DataFrame(st.session_state.gift_log)
-
-    # created_at の変換（最新の名前を特定するために使用）
-    gift_df2['created_at_dt'] = pd.to_datetime(gift_df2['created_at'], unit='s')
-
-    # ギフト名・ポイントを gift_list_map から補完
-    gift_df2['gift_id'] = gift_df2['gift_id'].astype(str)
-    if st.session_state.gift_list_map:
-        gift_info_df2 = pd.DataFrame.from_dict(st.session_state.gift_list_map, orient='index')
-        gift_info_df2.index = gift_info_df2.index.astype(str)
-
-        gift_df2 = (
-            gift_df2.set_index('gift_id')
-                    .join(gift_info_df2, on='gift_id',
-                          lsuffix='_user_data', rsuffix='_gift_info')
-                    .reset_index()
-        )
-
-    # カラム整形
-    gift_df2 = gift_df2.rename(columns={
-        'name_user_data': 'ユーザー名',
-        'name_gift_info': 'ギフト名',
-        'num': '個数',
-        'point': 'ポイント',
-        'user_id': 'ユーザーID'
-    })
-
-    # ---- 名前変更対策ロジック ----
-    
-    # 1. 各ユーザーIDに対して、一番最後に現れた（最新の）ユーザー名を取得
-    latest_names = gift_df2.sort_values('created_at_dt').groupby('ユーザーID')['ユーザー名'].last().to_dict()
-
-    # 2. 集計処理：ユーザー名ではなく「ユーザーID」を主軸に集計
-    grouped = (
-        gift_df2.groupby(['ユーザーID', 'ギフト名', 'ポイント'], as_index=False)
-                .agg({'個数': 'sum'})
-    )
-
-    # 3. 集計結果に「最新のユーザー名」を紐付ける
-    grouped['ユーザー名'] = grouped['ユーザーID'].map(latest_names)
-
-    # ユーザーごとの合計ポイントを計算
-    grouped['合計ポイント'] = grouped['個数'] * grouped['ポイント']
-
-    # ユーザー単位の総ポイントを「ユーザーID」基準で集計
-    user_total = grouped.groupby('ユーザーID')['合計ポイント'].sum().reset_index()
-    user_total = user_total.rename(columns={'合計ポイント': 'ユーザー総ポイント'})
-
-    # 総ポイントをマージ
-    grouped = grouped.merge(user_total, on='ユーザーID', how='left')
-
-    # ソート：
-    # 1) ユーザー総ポイント（降順）
-    # 2) ユーザーID（同一ユーザーのデータを固める）
-    # 3) ギフトポイント（降順）
-    grouped_sorted = grouped.sort_values(
-        by=['ユーザー総ポイント', 'ユーザーID', 'ポイント'],
-        ascending=[False, True, False]
-    )
-
-    # 表示用データの作成（ユーザーIDが変わったタイミングで名前を表示）
-    display_rows = []
-    prev_user_id = None
-    for _, row in grouped_sorted.iterrows():
-        curr_user_id = row['ユーザーID']
-        display_rows.append({
-            'ユーザー名': row['ユーザー名'] if curr_user_id != prev_user_id else '',
-            'ギフト名': row['ギフト名'],
-            '個数（合計）': row['個数'],
-            'ポイント': row['ポイント']
-        })
-        prev_user_id = curr_user_id
-
-    final_user_gift_df = pd.DataFrame(display_rows)
-
-    # UI表示
+    st.markdown("---")
+    st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
     st.markdown(
-        """
-        <h3 style="font-size:1.5em; margin-bottom:6px;">
-            🎁 スペシャルギフトログ一覧表
-            <span style="font-size:0.7em; opacity:0.8;">（ユーザー単位で集計）</span>
-        </h3>
-        """,
+        f"<p style='font-size:12px; color:#a1a1a1;'>"
+        f"※データは現在 {len(st.session_state.comment_log)} 件のコメント、"
+        f"{len(st.session_state.gift_log)} 件のスペシャルギフト、"
+        f"{len(st.session_state.free_gift_log)} 件の無償ギフト、"
+        f"および {st.session_state.total_fan_count} 名のファンのデータが蓄積されています。<br />"
+        f"※誤ってリロード（再読み込み）してしまった、閉じてしまった等でダウンロードせずに消失してしまった場合、"
+        f"24時間以内に運営にご相談いただければ、復元・ログ取得できる可能性があります。<br />"
+        f"※各タブを選択し、必要に応じて「＞」で詳細を展開してください。</p>", 
         unsafe_allow_html=True
     )
-    st.dataframe(final_user_gift_df, use_container_width=True, hide_index=True)
 
-# ▲▲▲ ここまで ▲▲▲
+    # --- タブの作成 ---
+    tab_com, tab_sp, tab_free, tab_all, tab_fan = st.tabs([
+        "💬 コメント", "🎁 スペシャルギフト", "🎈 無償ギフト", "🎁🎈 ギフト統合 (SP&無償)", "🏆 ファンリスト"
+    ])
 
-# --- 無償ギフトログ一覧表 の追加 ---
-
-st.markdown("---")
-
-# 無償ギフト用のカラム定義
-free_gift_cols = ['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']
-
-if st.session_state.free_gift_log:
-    # 1. ログのデータフレーム化
-    free_gift_df = pd.DataFrame(st.session_state.free_gift_log)
-    
-    # 2. 時間をJSTに変換
-    free_gift_df['created_at'] = pd.to_datetime(
-        free_gift_df['created_at'], unit='s'
-    ).dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
-    
-    # 3. カラム名の日本語化
-    # ※ free_gift_log は既に gift_name や point を持っている構造なので join は不要です
-    free_gift_df = free_gift_df.rename(columns={
-        'name': 'ユーザー名', 
-        'gift_name': 'ギフト名', 
-        'num': '個数', 
-        'point': 'ポイント', 
-        'created_at': 'ギフト時間', 
-        'user_id': 'ユーザーID'
-    })
-    
-    st.markdown("#### 🎈 無償ギフトログ一覧表")
-    st.dataframe(free_gift_df[free_gift_cols], use_container_width=True, hide_index=True)
-    
-    # 4. CSVダウンロードボタン
-    buffer = io.BytesIO()
-    free_gift_df[free_gift_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
-    buffer.seek(0)
-    st.download_button(
-        label="無償ギフトログをCSVでダウンロード",
-        data=buffer,
-        file_name=f"free_gift_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-        key="download_free_gift_csv" # 重複を避けるためのキー
-    )
-else:
-    st.info("ダウンロードできる無償ギフトがありません。")
-
-# --- 無償ギフトログ一覧表 ここまで ---
-
-st.markdown("---")
-
-# --- ▼▼▼ 無償ギフトログ一覧表 （ユーザー単位で集計） [名前変更対策版] ▼▼▼ ---
-
-if st.session_state.free_gift_log:
-    # 1. データの準備
-    free_gift_df2 = pd.DataFrame(st.session_state.free_gift_log)
-
-    # 時間順にソートするための準備（最新の名前を特定するため）
-    free_gift_df2['created_at_dt'] = pd.to_datetime(free_gift_df2['created_at'], unit='s')
-
-    # 2. カラム名の整理
-    free_gift_df2 = free_gift_df2.rename(columns={
-        'name': 'ユーザー名',
-        'gift_name': 'ギフト名',
-        'num': '個数',
-        'point': 'ポイント',
-        'user_id': 'ユーザーID'
-    })
-
-    # ---- 名前変更対策ロジック ----
-
-    # A. 各ユーザーIDに対して、最新のユーザー名を取得して辞書にする
-    latest_free_names = free_gift_df2.sort_values('created_at_dt').groupby('ユーザーID')['ユーザー名'].last().to_dict()
-
-    # B. 集計処理：ユーザーIDを軸にして、ギフトごとの個数を合計
-    free_grouped = (
-        free_gift_df2.groupby(['ユーザーID', 'ギフト名', 'ポイント'], as_index=False)
-                     .agg({'個数': 'sum'})
-    )
-
-    # C. 集計結果に最新のユーザー名をマッピング
-    free_grouped['ユーザー名'] = free_grouped['ユーザーID'].map(latest_free_names)
-
-    # 4. ソート用の計算（ユーザーごとの総個数を算出：ユーザーID基準）
-    free_user_total = free_grouped.groupby('ユーザーID')['個数'].sum().reset_index()
-    free_user_total = free_user_total.rename(columns={'個数': 'ユーザー総個数'})
-    
-    free_grouped = free_grouped.merge(free_user_total, on='ユーザーID', how='left')
-
-    # 5. ソート実行
-    # ユーザー総個数（降順） > ユーザーID（固定） > 各ギフト個数（降順）
-    free_grouped_sorted = free_grouped.sort_values(
-        by=['ユーザー総個数', 'ユーザーID', '個数'],
-        ascending=[False, True, False]
-    )
-
-    # 6. 表示用データの作成（ユーザーIDが変わった時だけ名前を表示し、以降は空白にする）
-    free_display_rows = []
-    prev_user_id = None
-    for _, row in free_grouped_sorted.iterrows():
-        curr_user_id = row['ユーザーID']
-        free_display_rows.append({
-            'ユーザー名': row['ユーザー名'] if curr_user_id != prev_user_id else '',
-            'ギフト名': row['ギフト名'],
-            '個数（合計）': row['個数'],
-            'ポイント': row['ポイント']
-        })
-        prev_user_id = curr_user_id
-
-    final_user_free_gift_df = pd.DataFrame(free_display_rows)
-
-    # 7. UI表示
-    st.markdown(
-        """
-        <h3 style="font-size:1.5em; margin-bottom:6px; margin-top:20px;">
-            🎈 無償ギフトログ一覧表
-            <span style="font-size:0.7em; opacity:0.8;">（ユーザー単位で集計）</span>
-        </h3>
-        """,
-        unsafe_allow_html=True
-    )
-    st.dataframe(final_user_free_gift_df, use_container_width=True, hide_index=True)
-
-# --- ▲▲▲ 無償ギフト集計版 ここまで ▲▲▲ ---
-
-# --- ▼▼▼ スペシャル＆無償ギフトログ一覧表（マージ版） ▼▼▼ ---
-
-st.markdown("---")
-st.markdown("#### 🎁🎈 スペシャル＆無償ギフトログ一覧表")
-
-combined_list = []
-
-# 1. スペシャルギフトの準備（既存のロジックで整形）
-if st.session_state.gift_log:
-    s_df = pd.DataFrame(st.session_state.gift_log)
-    if st.session_state.gift_list_map:
-        gift_info_df = pd.DataFrame.from_dict(st.session_state.gift_list_map, orient='index')
-        gift_info_df.index = gift_info_df.index.astype(str)
-        s_df['gift_id'] = s_df['gift_id'].astype(str)
-        s_df = s_df.set_index('gift_id').join(gift_info_df, on='gift_id', lsuffix='_u', rsuffix='_g').reset_index()
-        
-        # マージ用にカラム名を統一
-        s_df = s_df.rename(columns={
-            'name_u': 'ユーザー名', 'name_g': 'ギフト名', 'num': '個数', 
-            'point': 'ポイント', 'created_at': 'raw_time', 'user_id': 'ユーザーID'
-        })
-        combined_list.append(s_df[['raw_time', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']])
-
-# 2. 無償ギフトの準備（既存のロジックで整形）
-if st.session_state.free_gift_log:
-    f_df = pd.DataFrame(st.session_state.free_gift_log)
-    f_df = f_df.rename(columns={
-        'name': 'ユーザー名', 'gift_name': 'ギフト名', 'num': '個数', 
-        'point': 'ポイント', 'created_at': 'raw_time', 'user_id': 'ユーザーID'
-    })
-    combined_list.append(f_df[['raw_time', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']])
-
-# 3. マージとソート
-if combined_list:
-    merged_df = pd.concat(combined_list, ignore_index=True)
-    
-    # 時間で降順ソート（新しい順）
-    merged_df = merged_df.sort_values(by='raw_time', ascending=False)
-    
-    # 表示用に時間をJST文字列に変換
-    merged_df['ギフト時間'] = pd.to_datetime(
-        merged_df['raw_time'], unit='s'
-    ).dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
-    
-    # カラム順を整理
-    display_cols = ['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', 'ユーザーID']
-    
-    st.dataframe(merged_df[display_cols], use_container_width=True, hide_index=True)
-    
-    # 4. CSVダウンロードボタン
-    buffer = io.BytesIO()
-    merged_df[display_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
-    buffer.seek(0)
-    st.download_button(
-        label="スペシャル＆無償ギフトログをCSVでダウンロード",
-        data=buffer,
-        file_name=f"all_gift_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-        key="download_all_gift_csv"
-    )
-else:
-    st.info("表示できるギフトデータがありません。")
-
-# --- ▲▲▲ スペシャル＆無償マージ版 ここまで ▲▲▲ ---
-
-# --- ▼▼▼ スペシャル＆無償ギフトログ一覧表 （ユーザー単位で集計） [名前変更対策版] ▼▼▼ ---
-
-st.markdown("---")
-
-# データがどちらか一方でもあれば実行
-if st.session_state.gift_log or st.session_state.free_gift_log:
-    all_data_for_agg = []
-
-    # 1. スペシャルギフトの集計用準備
-    if st.session_state.gift_log:
-        s_df_agg = pd.DataFrame(st.session_state.gift_log)
-        s_df_agg['created_at_dt'] = pd.to_datetime(s_df_agg['created_at'], unit='s')
-        
-        if st.session_state.gift_list_map:
-            gift_info_df = pd.DataFrame.from_dict(st.session_state.gift_list_map, orient='index')
-            gift_info_df.index = gift_info_df.index.astype(str)
-            s_df_agg['gift_id'] = s_df_agg['gift_id'].astype(str)
-            s_df_agg = s_df_agg.set_index('gift_id').join(gift_info_df, on='gift_id', lsuffix='_u', rsuffix='_g').reset_index()
+    # ==========================================
+    # タブ1: コメントログ
+    # ==========================================
+    with tab_com:
+        filtered_comments = [
+            log for log in st.session_state.comment_log 
+            if not any(keyword in log.get('name', '') or keyword in log.get('comment', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
+        ]
+        if filtered_comments:
+            c_df = pd.DataFrame(filtered_comments)
+            c_df['コメント時間'] = pd.to_datetime(c_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+            c_df = c_df.rename(columns={'name': 'ユーザー名', 'comment': 'コメント内容', 'user_id': 'ユーザーID'})
             
-            s_df_agg = s_df_agg.rename(columns={
-                'name_u': 'ユーザー名', 'name_g': 'ギフト名', 'num': '個数', 
-                'point': 'ポイント', 'user_id': 'ユーザーID'
-            })
-            all_data_for_agg.append(s_df_agg[['ユーザー名', 'ユーザーID', 'ギフト名', 'ポイント', '個数', 'created_at_dt']])
-
-    # 2. 無償ギフトの集計用準備
-    if st.session_state.free_gift_log:
-        f_df_agg = pd.DataFrame(st.session_state.free_gift_log)
-        f_df_agg['created_at_dt'] = pd.to_datetime(f_df_agg['created_at'], unit='s')
-        f_df_agg = f_df_agg.rename(columns={
-            'name': 'ユーザー名', 'gift_name': 'ギフト名', 'num': '個数', 
-            'point': 'ポイント', 'user_id': 'ユーザーID'
-        })
-        all_data_for_agg.append(f_df_agg[['ユーザー名', 'ユーザーID', 'ギフト名', 'ポイント', '個数', 'created_at_dt']])
-
-    if all_data_for_agg:
-        combined_agg_df = pd.concat(all_data_for_agg, ignore_index=True)
-
-        # 最新の名前を特定
-        latest_all_names = combined_agg_df.sort_values('created_at_dt').groupby('ユーザーID')['ユーザー名'].last().to_dict()
-
-        # 4. ユーザー・ギフトごとの集計
-        grouped = (
-            combined_agg_df.groupby(['ユーザーID', 'ギフト名', 'ポイント'], as_index=False)
-                           .agg({'個数': 'sum'})
-        )
-        grouped['ユーザー名'] = grouped['ユーザーID'].map(latest_all_names)
-        grouped['行ポイント'] = grouped['個数'] * grouped['ポイント']
-
-        # 5. ユーザー単位の総ポイントを計算
-        user_total = grouped.groupby('ユーザーID')['行ポイント'].sum().reset_index()
-        user_total = user_total.rename(columns={'行ポイント': 'ユーザー総ポイント'})
-        grouped = grouped.merge(user_total, on='ユーザーID', how='left')
-
-        # 6. ソート
-        grouped_sorted = grouped.sort_values(
-            by=['ユーザー総ポイント', 'ユーザーID', 'ポイント'],
-            ascending=[False, True, False]
-        )
-
-        # 7. 表示用データの整形（★見出し名を変更）
-        display_rows = []
-        prev_user_id = None
-        for _, row in grouped_sorted.iterrows():
-            curr_user_id = row['ユーザーID']
-            is_new_user = (curr_user_id != prev_user_id)
+            st.markdown("### 📝 コメントログ一覧")
+            st.dataframe(c_df[['コメント時間', 'ユーザー名', 'コメント内容']], use_container_width=True, hide_index=True)
             
-            display_rows.append({
-                'ユーザー名': row['ユーザー名'] if is_new_user else '',
-                'ギフト名': row['ギフト名'],
-                '個数（合計）': row['個数'],
-                'ポイント': row['ポイント'],
-                '総貢献Pt（※単純合計値）': int(row['ユーザー総ポイント']) if is_new_user else ''
-            })
-            prev_user_id = curr_user_id
+            buf_com = io.BytesIO()
+            c_df[['コメント時間', 'ユーザー名', 'ユーザーID', 'コメント内容']].to_csv(buf_com, index=False, encoding='utf-8-sig')
+            st.download_button("コメントログをダウンロード", buf_com.getvalue(), f"comment_log_{st.session_state.room_id}.csv", "text/csv", key="dl_c")
+        else:
+            st.info("コメントデータがありません。")
 
-        final_agg_df = pd.DataFrame(display_rows)
+    # ==========================================
+    # タブ2: スペシャルギフトログ
+    # ==========================================
+    with tab_sp:
+        if st.session_state.gift_log:
+            s_raw = pd.DataFrame(st.session_state.gift_log)
+            if st.session_state.gift_list_map:
+                g_info = pd.DataFrame.from_dict(st.session_state.gift_list_map, orient='index')
+                g_info.index = g_info.index.astype(str)
+                s_raw['gift_id'] = s_raw['gift_id'].astype(str)
+                s_raw = s_raw.set_index('gift_id').join(g_info, on='gift_id', lsuffix='_u', rsuffix='_g').reset_index()
 
-        # 8. UI表示
-        st.markdown(
-            """
-            <h3 style="font-size:1.5em; margin-bottom:6px;">
-                🎁🎈 スペシャル＆無償ギフトログ一覧表
-                <span style="font-size:0.7em; opacity:0.8;">（ユーザー単位で集計）</span>
-            </h3>
-            """,
-            unsafe_allow_html=True
-        )
-        st.dataframe(final_agg_df, use_container_width=True, hide_index=True)
+            # 1. 全量一覧
+            with st.expander("📜 スペシャルギフトログ一覧表 (全量)", expanded=True):
+                s_disp = s_raw.copy()
+                s_disp['ギフト時間'] = pd.to_datetime(s_disp['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+                s_disp['合計Pt（※単純合計値）'] = (pd.to_numeric(s_disp['num']) * pd.to_numeric(s_disp['point'])).astype(int)
+                s_disp = s_disp.rename(columns={'name_u': 'ユーザー名', 'name_g': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'user_id': 'ユーザーID'})
+                st.dataframe(s_disp[['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', '合計Pt（※単純合計値）']], use_container_width=True, hide_index=True)
+                
+                buf_s1 = io.BytesIO()
+                s_disp[['ギフト時間', 'ユーザー名', 'ユーザーID', 'ギフト名', '個数', 'ポイント', '合計Pt（※単純合計値）']].to_csv(buf_s1, index=False, encoding='utf-8-sig')
+                st.download_button("スペシャルギフトログをダウンロード", buf_s1.getvalue(), "sp_gift_all.csv", "text/csv", key="dl_s1")
 
-else:
-    st.info("集計できるギフトデータがありません。")
+            # 2. ギフト単位合算
+            with st.expander("🎁 ユーザー単位でギフト合算集計", expanded=False):
+                s_sum = s_raw.groupby(['user_id', 'name_g', 'point'], as_index=False).agg({'num': 'sum', 'created_at': 'max', 'name_u': 'last'})
+                s_sum['合計Pt（※単純合計値）'] = (s_sum['num'] * pd.to_numeric(s_sum['point'])).astype(int)
+                s_sum['最新ギフト時間'] = pd.to_datetime(s_sum['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+                s_sum = s_sum.rename(columns={'name_u': 'ユーザー名', 'name_g': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'user_id': 'ユーザーID'}).sort_values('最新ギフト時間', ascending=False)
+                st.dataframe(s_sum[['最新ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', '合計Pt（※単純合計値）']], use_container_width=True, hide_index=True)
 
-# --- ▲▲▲ スペシャル＆無償ギフト集計版 ここまで ▲▲▲ ---
+            # 3. ユーザー単位集計 (貢献順)
+            with st.expander("👤 ユーザー単位で集計 (総貢献Pt順)", expanded=False):
+                s_user = s_raw.copy()
+                s_user['line_pt'] = pd.to_numeric(s_user['num']) * pd.to_numeric(s_user['point'])
+                latest_names = s_user.sort_values('created_at').groupby('user_id')['name_u'].last()
+                u_agg = s_user.groupby(['user_id', 'name_g', 'point'], as_index=False).agg({'num': 'sum', 'line_pt': 'sum'})
+                u_total = u_agg.groupby('user_id')['line_pt'].sum().rename('総Pt')
+                u_merged = u_agg.merge(u_total, on='user_id').sort_values(['総Pt', 'user_id', 'line_pt'], ascending=[False, True, False])
+                
+                u_rows = []
+                prev_id = None
+                for _, r in u_merged.iterrows():
+                    u_rows.append({
+                        'ユーザー名': latest_names[r['user_id']] if r['user_id'] != prev_id else '',
+                        'ギフト名': r['name_g'], '個数': r['num'], 'ポイント': r['point'],
+                        'ギフト単位Pt': int(r['line_pt']), '総貢献Pt（※単純合計値）': int(r['総Pt']) if r['user_id'] != prev_id else ''
+                    })
+                    prev_id = r['user_id']
+                st.dataframe(pd.DataFrame(u_rows), use_container_width=True, hide_index=True)
+        else:
+            st.info("スペシャルギフトデータがありません。")
 
-st.markdown("---")
+    # ==========================================
+    # タブ3: 無償ギフトログ
+    # ==========================================
+    with tab_free:
+        if st.session_state.free_gift_log:
+            f_raw = pd.DataFrame(st.session_state.free_gift_log)
+            
+            with st.expander("📜 無償ギフトログ一覧表 (全量)", expanded=True):
+                f_disp = f_raw.copy()
+                f_disp['ギフト時間'] = pd.to_datetime(f_disp['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+                f_disp['合計Pt（※単純合計値）'] = (pd.to_numeric(f_disp['num']) * pd.to_numeric(f_disp['point'])).astype(int)
+                f_disp = f_disp.rename(columns={'name': 'ユーザー名', 'gift_name': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'user_id': 'ユーザーID'})
+                st.dataframe(f_disp[['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', '合計Pt（※単純合計値）']], use_container_width=True, hide_index=True)
+                
+                buf_f1 = io.BytesIO()
+                f_disp[['ギフト時間', 'ユーザー名', 'ユーザーID', 'ギフト名', '個数', 'ポイント', '合計Pt（※単純合計値）']].to_csv(buf_f1, index=False, encoding='utf-8-sig')
+                st.download_button("無償ギフトログをダウンロード", buf_f1.getvalue(), "free_gift_all.csv", "text/csv", key="dl_f1")
 
-# ファンリスト一覧表
-if st.session_state.fan_list:
-    fan_df = pd.DataFrame(st.session_state.fan_list)
-    
-    rename_map = {'user_name': 'ユーザー名', 'level': 'レベル', 'point': 'ポイント', 'user_id': 'ユーザーID'}
-    if 'rank' in fan_df.columns:
-        rename_map['rank'] = '順位'
-    
-    fan_df = fan_df.rename(columns=rename_map)
+            with st.expander("🎈 ユーザー単位でギフト合算集計", expanded=False):
+                f_sum = f_raw.groupby(['user_id', 'gift_name', 'point'], as_index=False).agg({'num': 'sum', 'created_at': 'max', 'name': 'last'})
+                f_sum['合計Pt（※単純合計値）'] = (f_sum['num'] * pd.to_numeric(f_sum['point'])).astype(int)
+                f_sum['最新ギフト時間'] = pd.to_datetime(f_sum['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+                f_sum = f_sum.rename(columns={'name': 'ユーザー名', 'gift_name': 'ギフト名', 'num': '個数', 'point': 'ポイント'}).sort_values('最新ギフト時間', ascending=False)
+                st.dataframe(f_sum[['最新ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', '合計Pt（※単純合計値）']], use_container_width=True, hide_index=True)
 
-    final_fan_cols = [col for col in fan_cols if col in fan_df.columns]
-    
-    column_config = {
-        "順位": st.column_config.NumberColumn("順位", help="ファンランキングの順位", width="small"),
-        "レベル": st.column_config.NumberColumn("レベル", help="ファンレベル", width="small"),
-        "ユーザー名": st.column_config.TextColumn("ユーザー名", help="SHOWROOMのユーザー名", width="large"),
-        "ポイント": st.column_config.NumberColumn("ポイント", help="獲得ポイント", format="%d", width="medium"),
-        "ユーザーID": st.column_config.NumberColumn("ユーザーID", help="SHOWROOMのユーザーID", width="medium")
-    }
-    
-    st.markdown("#### 🏆 ファンリスト一覧表")
-    st.dataframe(
-        fan_df[final_fan_cols], 
-        use_container_width=True, 
-        hide_index=True,
-        column_config=column_config
-    )
-    
-    buffer = io.BytesIO()
-    fan_df[final_fan_cols].to_csv(buffer, index=False, encoding='utf-8-sig')
-    buffer.seek(0)
-    st.download_button(
-        label="ファンリストをCSVでダウンロード",
-        data=buffer,
-        file_name=f"fan_list_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-    )
-else:
-    st.info("ダウンロードできるファンデータがありません。")
+            with st.expander("👤 ユーザー単位で集計 (総貢献Pt順)", expanded=False):
+                f_u_df = f_raw.copy()
+                f_u_df['line_pt'] = pd.to_numeric(f_u_df['num']) * pd.to_numeric(f_u_df['point'])
+                latest_f_names = f_u_df.sort_values('created_at').groupby('user_id')['name'].last()
+                f_u_agg = f_u_df.groupby(['user_id', 'gift_name', 'point'], as_index=False).agg({'num': 'sum', 'line_pt': 'sum'})
+                f_u_total = f_u_agg.groupby('user_id')['line_pt'].sum().rename('総Pt')
+                f_u_merged = f_u_agg.merge(f_u_total, on='user_id').sort_values(['総Pt', 'user_id', 'line_pt'], ascending=[False, True, False])
+                
+                f_u_rows = []
+                prev_f_id = None
+                for _, r in f_u_merged.iterrows():
+                    f_u_rows.append({
+                        'ユーザー名': latest_f_names[r['user_id']] if r['user_id'] != prev_f_id else '',
+                        'ギフト名': r['gift_name'], '個数': r['num'], 'ポイント': r['point'],
+                        'ギフト単位Pt': int(r['line_pt']), '総貢献Pt（※単純合計値）': int(r['総Pt']) if r['user_id'] != prev_f_id else ''
+                    })
+                    prev_f_id = r['user_id']
+                st.dataframe(pd.DataFrame(f_u_rows), use_container_width=True, hide_index=True)
+        else:
+            st.info("無償ギフトデータがありません。")
+
+    # ==========================================
+    # タブ4: スペシャル＆無償 統合ログ
+    # ==========================================
+   
+    with tab_all:
+        combined_data = []
+        if st.session_state.gift_log:
+            s_part = pd.DataFrame(st.session_state.gift_log)
+            if st.session_state.gift_list_map:
+                g_map = pd.DataFrame.from_dict(st.session_state.gift_list_map, orient='index')
+                s_part['gift_id'] = s_part['gift_id'].astype(str)
+                s_part = s_part.set_index('gift_id').join(g_map, on='gift_id', lsuffix='_u', rsuffix='_g').reset_index()
+                s_part = s_part.rename(columns={'name_u': 'name', 'name_g': 'gift_name'})
+            combined_data.append(s_part[['created_at', 'name', 'user_id', 'gift_name', 'num', 'point']])
+        
+        if st.session_state.free_gift_log:
+            f_part = pd.DataFrame(st.session_state.free_gift_log)
+            combined_data.append(f_part[['created_at', 'name', 'user_id', 'gift_name', 'num', 'point']])
+
+        if combined_data:
+            all_df = pd.concat(combined_data, ignore_index=True)
+            all_df['created_at_dt'] = pd.to_datetime(all_df['created_at'], unit='s')
+
+            with st.expander("📜 SP&無償ギフトログ一覧表 (全量)", expanded=True):
+                all_disp = all_df.sort_values('created_at', ascending=False).copy()
+                all_disp['ギフト時間'] = all_disp['created_at_dt'].dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+                all_disp['合計Pt（※単純合計値）'] = (pd.to_numeric(all_disp['num']) * pd.to_numeric(all_disp['point'])).astype(int)
+                all_disp = all_disp.rename(columns={'name': 'ユーザー名', 'gift_name': 'ギフト名', 'num': '個数', 'point': 'ポイント', 'user_id': 'ユーザーID'})
+                st.dataframe(all_disp[['ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', '合計Pt（※単純合計値）']], use_container_width=True, hide_index=True)
+                
+                buf_all1 = io.BytesIO()
+                all_disp[['ギフト時間', 'ユーザー名', 'ユーザーID', 'ギフト名', '個数', 'ポイント', '合計Pt（※単純合計値）']].to_csv(buf_all1, index=False, encoding='utf-8-sig')
+                st.download_button("SP&無償ギフトログをダウンロード", buf_all1.getvalue(), "combined_gift_all.csv", "text/csv", key="dl_all1")
+
+            with st.expander("🎁🎈 ユーザー単位でギフト合算集計", expanded=False):
+                all_sum = all_df.groupby(['user_id', 'gift_name', 'point'], as_index=False).agg({'num': 'sum', 'created_at_dt': 'max', 'name': 'last'})
+                all_sum['合計Pt（※単純合計値）'] = (all_sum['num'] * pd.to_numeric(all_sum['point'])).astype(int)
+                all_sum['最新ギフト時間'] = all_sum['created_at_dt'].dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+                all_sum = all_sum.rename(columns={'name': 'ユーザー名', 'gift_name': 'ギフト名', 'num': '個数', 'point': 'ポイント'}).sort_values('最新ギフト時間', ascending=False)
+                st.dataframe(all_sum[['最新ギフト時間', 'ユーザー名', 'ギフト名', '個数', 'ポイント', '合計Pt（※単純合計値）']], use_container_width=True, hide_index=True)
+
+            with st.expander("👤 ユーザー単位で集計 (総貢献Pt順)", expanded=False):
+                all_u = all_df.copy()
+                all_u['line_pt'] = pd.to_numeric(all_u['num']) * pd.to_numeric(all_u['point'])
+                latest_all_names = all_u.sort_values('created_at').groupby('user_id')['name'].last()
+                all_u_agg = all_u.groupby(['user_id', 'gift_name', 'point'], as_index=False).agg({'num': 'sum', 'line_pt': 'sum'})
+                all_u_total = all_u_agg.groupby('user_id')['line_pt'].sum().rename('総Pt')
+                all_u_merged = all_u_agg.merge(all_u_total, on='user_id').sort_values(['総Pt', 'user_id', 'line_pt'], ascending=[False, True, False])
+                
+                all_u_rows = []
+                prev_all_id = None
+                for _, r in all_u_merged.iterrows():
+                    all_u_rows.append({
+                        'ユーザー名': latest_all_names[r['user_id']] if r['user_id'] != prev_all_id else '',
+                        'ギフト名': r['gift_name'], '個数': r['num'], 'ポイント': r['point'],
+                        'ギフト単位Pt': int(r['line_pt']), '総貢献Pt（※単純合計値）': int(r['総Pt']) if r['user_id'] != prev_all_id else ''
+                    })
+                    prev_all_id = r['user_id']
+                st.dataframe(pd.DataFrame(all_u_rows), use_container_width=True, hide_index=True)
+        else:
+            st.info("SP&無償ギフトデータがありません。")
+
+    # ==========================================
+    # タブ5: ファンリスト
+    # ==========================================
+    with tab_fan:
+        if st.session_state.fan_list:
+            raw_fan_df = pd.DataFrame(st.session_state.fan_list)
+            rename_map = {'rank': '順位', 'level': 'レベル', 'user_name': 'ユーザー名', 'point': 'ポイント', 'user_id': 'ユーザーID'}
+            existing_rename_map = {k: v for k, v in rename_map.items() if k in raw_fan_df.columns}
+            fan_df = raw_fan_df.rename(columns=existing_rename_map)
+            desired_cols = ['順位', 'レベル', 'ユーザー名', 'ポイント', 'ユーザーID']
+            final_display_cols = [c for c in desired_cols if c in fan_df.columns]
+            
+            st.markdown("### 🏆 ファンリスト一覧")
+            st.dataframe(fan_df[final_display_cols], use_container_width=True, hide_index=True)
+            
+            buf_fan = io.BytesIO()
+            fan_df[final_display_cols].to_csv(buf_fan, index=False, encoding='utf-8-sig')
+            st.download_button(label="ファンリストをダウンロード", data=buf_fan.getvalue(), file_name=f"fan_list_{st.session_state.room_id}.csv", mime="text/csv", key="dl_f_final")
+        else:
+            st.info("ファンデータがありません。")
