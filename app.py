@@ -1050,7 +1050,8 @@ if st.session_state.is_tracking or st.session_state.get("room_id"):
                             # border_color = "#f8bbd0"
 
                         # 5. ファンレベル上昇 (Lv10: 暖色 / Lv9: 同系統の薄い色)
-                        elif "ファンレベルが10に" in msg_text:
+                        # elif "ファンレベルが10に" in msg_text:
+                        elif "ファンレベルが10に" in msg_text or "人になりました" in msg_text:
                             bg_color = "#fff3cd"  # ゴールド（ファン化）
                             # border_color = "#ffeeba"
                         elif "ファンレベルが9に" in msg_text:
