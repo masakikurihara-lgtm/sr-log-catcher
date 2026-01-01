@@ -29,9 +29,23 @@ class FreeGiftReceiver:
                 if len(parts) < 3: return
                 data = json.loads(parts[2])
 
-                if data.get("t") == 2:
-                    # 受信したデータを、自分専用の箱に入れる
+                # tの値を取得（念のため文字列として比較）
+                msg_type = str(data.get("t"))
+
+                # 🎁 ギフト (2) または ✅ システムメッセージ (18) の場合にキューへ入れる
+                if msg_type == "2" or msg_type == "18":
+                    
+                    # システムメッセージの場合は文字化け修復を試みる
+                    if msg_type == "18":
+                        try:
+                            raw_m = data.get("m", "")
+                            data["m"] = raw_m.encode('latin-1').decode('utf-8')
+                        except:
+                            pass
+                    
+                    # 以前のコードと同じく、データを専用の箱に入れる
                     self.my_queue.put(data)
+
             except Exception as e:
                 print(f"WebSocket Message Error: {e}")
 

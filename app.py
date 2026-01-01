@@ -7,6 +7,7 @@ import io
 from streamlit_autorefresh import st_autorefresh
 import ftplib
 import io
+import time
 import datetime
 import os
 from free_gift_handler import FreeGiftReceiver, get_streaming_server_info, update_free_gift_master, gift_queue
@@ -555,6 +556,7 @@ if st.button("トラッキング開始", key="start_button"):
                 st.session_state.total_fan_count = 0
                 st.session_state.free_gift_log = []
                 st.session_state.raw_free_gift_queue = []
+                st.session_state.system_msg_log = []
                 
                 # 1. 無償ギフトマスターの取得
                 update_free_gift_master(input_room_id)
@@ -751,46 +753,63 @@ if st.session_state.is_tracking:
         st.session_state.fan_list = fan_list
         st.session_state.total_fan_count = total_fan_count
 
-        # --- 無償ギフト：キューからデータを取り出してログに変換 ---
-        import time
+        # --- 無償ギフト・システムMSG：キューからデータを取り出してログに変換 ---
         while not gift_queue.empty():
             try:
                 raw_data = gift_queue.get_nowait()
-                gift_id = raw_data.get("g")
                 
-                # 💡 ここが重要：マスター（1ptのギフトだけが入っている辞書）に
-                # 存在しないギフトID（20ptなど）は、このループでは処理せず無視（continue）する
-                # これにより、20ptは「スペシャルギフト」側にのみ表示されるようになります
-                master = st.session_state.get("free_gift_master", {}).get(gift_id)
-                if not master:
-                    continue
-                
-                master = st.session_state.free_gift_master[gift_id]
-                
-                new_entry = {
-                    "created_at": raw_data.get("created_at", int(time.time())),
-                    "user_id": raw_data.get("u"),
-                    "name": raw_data.get("ac"),
-                    "avatar_id": raw_data.get("av"),
-                    "gift_id": gift_id,
-                    "gift_name": master.get("name"),
-                    "point": master.get("point", 1),
-                    "num": raw_data.get("n", 1),
-                    "image": master.get("image", "")
-                }
-                
-                # ログの先頭に追加（新しい順）
-                st.session_state.free_gift_log.insert(0, new_entry)
-                
-                # ログが溜まりすぎないよう制限（直近100件までなど）
-                # if len(st.session_state.free_gift_log) > 100:
-                #     st.session_state.free_gift_log = st.session_state.free_gift_log[:100]
+                # t の判定（文字列に変換して比較するのが最も安全です）
+                m_type = str(raw_data.get("t", ""))
+
+                # --- ✅ A. システムメッセージ (t: 18) の処理 ---
+                if m_type == "18":
+                    # time.time() は使わず、datetime で安全にタイムスタンプを取得
+                    ts = raw_data.get("created_at") or int(datetime.datetime.now().timestamp())
+                    new_sys_entry = {
+                        "created_at": ts,
+                        "message": raw_data.get("m", ""),
+                        "user_id": raw_data.get("u")
+                    }
+                    st.session_state.system_msg_log.insert(0, new_sys_entry)
+                    st.session_state.system_msg_log = st.session_state.system_msg_log[:200]
+
+                # --- 🎁 B. 無償ギフト (t: 2) の処理 ---
+                elif m_type == "2":
+                    g_id = raw_data.get("g")
+                    if g_id is None:
+                        continue
                     
+                    # ギフトマスターとの照合
+                    master = st.session_state.get("free_gift_master", {})
+                    # IDが数値でも文字列でも見つけられるように検索
+                    gift_info = master.get(str(g_id)) or master.get(g_id)
+                    
+                    if not gift_info:
+                        # マスターにない（有償ギフトなど）場合はスキップ
+                        continue
+                    
+                    ts = raw_data.get("created_at") or int(datetime.datetime.now().timestamp())
+                    new_entry = {
+                        "created_at": ts,
+                        "user_id": raw_data.get("u"),
+                        "name": raw_data.get("ac"),
+                        "avatar_id": raw_data.get("av"),
+                        "gift_id": str(g_id),
+                        "gift_name": gift_info.get("name"),
+                        "point": gift_info.get("point", 1),
+                        "num": raw_data.get("n", 1),
+                        "image": gift_info.get("image", "")
+                    }
+                    st.session_state.free_gift_log.insert(0, new_entry)
+                    st.session_state.free_gift_log = st.session_state.free_gift_log[:200]
+
             except Exception as e:
-                break
-            
-            # 新しい順にソート
-            st.session_state.free_gift_log.sort(key=lambda x: x["created_at"], reverse=True)
+                # ここで print しておけば、アプリを止めずにコンソールで原因を確認できます
+                print(f"Loop Error: {e}")
+                continue
+
+        # 最後に時間順にソート（念のため）
+        st.session_state.free_gift_log.sort(key=lambda x: x["created_at"], reverse=True)
 
         # --- 無償ギフトログ自動保存 (100件ごと) ---
         prev_free_gift_count = st.session_state.get("prev_free_gift_count", 0)
@@ -958,27 +977,27 @@ if st.session_state.is_tracking:
                     st.info("無償ギフトはまだありません。")
 
         with col_fan:
-            st.markdown("###### 🏆 ファンリスト")
+            st.markdown("###### 🧡 システムMSG") # タイトル変更
             with st.container(border=True, height=500):
-                if st.session_state.fan_list:
-                    display_fans = st.session_state.fan_list
-                    for fan in display_fans:
-                        # 他のカラム（comment-item等）と全く同じクラス構成に変更
+                # ✅ システムメッセージの表示
+                if st.session_state.get("system_msg_log"):
+                    for log in st.session_state.system_msg_log:
+                        created_at = datetime.datetime.fromtimestamp(log.get('created_at', 0), JST).strftime("%H:%M:%S")
+                        msg_text = log.get('message', '')
+                        
+                        # paddingを削除し、class="comment-item"を付与して高さを統一
                         html = f"""
-                        <div class="fan-item">
-                            <div class="fan-info-row">
-                                <img src="https://static.showroom-live.com/image/avatar/{fan.get('avatar_id', 0)}.png?v=108" class="fan-avatar" />
-                                <div class="fan-content">
-                                    <div class="fan-level">Lv. {fan.get('level', 0)}</div>
-                                    <div class="fan-user">{fan.get('user_name', '不明なユーザー')}</div>
-                                </div>
+                        <div class="comment-item">
+                            <div class="comment-time">{created_at}</div>
+                            <div style="color: #FF6C1A; font-weight: bold; font-size: 0.85em; line-height: 1.4; margin-top: 2px;">
+                                {msg_text}
                             </div>
                         </div>
                         <hr style="border: none; border-top: 1px solid #eee; margin: 8px 0;">
                         """
                         st.markdown(html, unsafe_allow_html=True)
                 else:
-                    st.info("ファンデータがありません。")
+                    st.info("システムメッセージはありません。")
     else:
         st.warning("指定されたルームIDが見つからないか、認証されていないルームIDか、現在配信中ではありません。")
         st.session_state.is_tracking = False
@@ -988,9 +1007,13 @@ if st.session_state.is_tracking and st.session_state.room_id:
 
     st.markdown("---")
     st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
+    
+    # 統計情報の表示にシステムMSG件数を追加
+    sys_msg_count = len(st.session_state.get("system_msg_log", []))
     st.markdown(
         f"<p style='font-size:12px; color:#a1a1a1;'>"
         f"※データは現在 {len(st.session_state.comment_log)} 件のコメント、"
+        f"{sys_msg_count} 件のシステムMSG、" # 追加
         f"{len(st.session_state.gift_log)} 件のスペシャルギフト、"
         f"{len(st.session_state.free_gift_log)} 件の無償ギフト、"
         f"および {st.session_state.total_fan_count} 名のファンのデータが蓄積されています。<br />"
@@ -1000,32 +1023,48 @@ if st.session_state.is_tracking and st.session_state.room_id:
         unsafe_allow_html=True
     )
 
-    # --- タブの作成 ---
+    # --- タブの作成 (タブ名を変更) ---
     tab_com, tab_sp, tab_free, tab_all, tab_fan = st.tabs([
-        "💬 コメント", "🎁 スペシャルギフト", "🎈 無償ギフト", "🎁🎈 ギフト統合 (SP&無償)", "🏆 ファンリスト"
+        "💬🧡 コメント&MSG", "🎁 スペシャルギフト", "🎈 無償ギフト", "🎁🎈 ギフト統合 (SP&無償)", "🏆 ファンリスト"
     ])
 
     # ==========================================
-    # タブ1: コメントログ
+    # タブ1: コメント & システムメッセージログ
     # ==========================================
     with tab_com:
-        filtered_comments = [
-            log for log in st.session_state.comment_log 
-            if not any(keyword in log.get('name', '') or keyword in log.get('comment', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
-        ]
-        if filtered_comments:
-            c_df = pd.DataFrame(filtered_comments)
-            c_df['コメント時間'] = pd.to_datetime(c_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
-            c_df = c_df.rename(columns={'name': 'ユーザー名', 'comment': 'コメント内容', 'user_id': 'ユーザーID'})
-            
-            st.markdown("### 📝 コメントログ一覧")
-            st.dataframe(c_df[['コメント時間', 'ユーザー名', 'コメント内容']], use_container_width=True, hide_index=True)
-            
-            buf_com = io.BytesIO()
-            c_df[['コメント時間', 'ユーザー名', 'ユーザーID', 'コメント内容']].to_csv(buf_com, index=False, encoding='utf-8-sig')
-            st.download_button("コメントログをダウンロード", buf_com.getvalue(), f"comment_log_{st.session_state.room_id}.csv", "text/csv", key="dl_c")
-        else:
-            st.info("コメントデータがありません。")
+        # --- 1. コメントログ部分 ---
+        with st.expander("📝 コメントログ一覧", expanded=True):
+            filtered_comments = [
+                log for log in st.session_state.comment_log 
+                if not any(keyword in log.get('name', '') or keyword in log.get('comment', '') for keyword in SYSTEM_COMMENT_KEYWORDS)
+            ]
+            if filtered_comments:
+                c_df = pd.DataFrame(filtered_comments)
+                c_df['コメント時間'] = pd.to_datetime(c_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+                c_df = c_df.rename(columns={'name': 'ユーザー名', 'comment': 'コメント内容', 'user_id': 'ユーザーID'})
+                
+                st.dataframe(c_df[['コメント時間', 'ユーザー名', 'コメント内容']], use_container_width=True, hide_index=True)
+                
+                buf_com = io.BytesIO()
+                c_df[['コメント時間', 'ユーザー名', 'ユーザーID', 'コメント内容']].to_csv(buf_com, index=False, encoding='utf-8-sig')
+                st.download_button("コメントログをダウンロード", buf_com.getvalue(), f"comment_log_{st.session_state.room_id}.csv", "text/csv", key="dl_c")
+            else:
+                st.info("コメントデータがありません。")
+
+        # --- 2. システムMSGログ部分 (追加) ---
+        with st.expander("🧡 システムMSGログ一覧", expanded=True):
+            system_msgs = st.session_state.get("system_msg_log", [])
+            if system_msgs:
+                s_msg_df = pd.DataFrame(system_msgs)
+                # 表示時間の変換
+                s_msg_df['表示時間'] = pd.to_datetime(s_msg_df['created_at'], unit='s').dt.tz_localize('UTC').dt.tz_convert(JST).dt.strftime("%Y-%m-%d %H:%M:%S")
+                # カラム名の整理
+                s_msg_df = s_msg_df.rename(columns={'message': '表示内容'})
+                
+                # 表示用データフレーム（CSVダウンロード不要とのことなので表示のみ）
+                st.dataframe(s_msg_df[['表示時間', '表示内容']], use_container_width=True, hide_index=True)
+            else:
+                st.info("システムメッセージデータがありません。")
 
     # ==========================================
     # タブ2: スペシャルギフトログ
