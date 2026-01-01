@@ -954,7 +954,7 @@ if st.session_state.is_tracking or st.session_state.get("room_id"):
                         elif total_point >= 100000: highlight_class = "highlight-100000"
                         elif total_point >= 60000: highlight_class = "highlight-60000"
                         elif total_point >= 30000: highlight_class = "highlight-30000"
-                        elif total_point >= 10000: highlight_class = "highlight-10000"
+                        elif total_point >= 1: highlight_class = "highlight-10000"
                         
                         avatar_id = log.get('avatar_id', None)
                         avatar_url = f"https://static.showroom-live.com/image/avatar/{avatar_id}.png" if avatar_id else DEFAULT_AVATAR
