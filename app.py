@@ -583,18 +583,17 @@ if st.button("トラッキング開始", key="start_button"):
 
 if st.button("トラッキング停止", key="stop_button", disabled=not st.session_state.is_tracking):
     if st.session_state.is_tracking:
-        # 保存対象に無償ギフトを追加
         save_log_to_ftp("comment")
         save_log_to_ftp("gift")
         save_log_to_ftp("free_gift")
 
     st.session_state.is_tracking = False
     st.session_state.room_info = None
-    st.info("トラッキングを停止しました。")
-    st.rerun()
+    st.success("トラッキングを停止しました。このままログの確認・ダウンロードが可能です。")
+    # st.rerun()  # ← ここをコメントアウトして即時リセットを防ぐ
 
 
-if st.session_state.is_tracking:
+if st.session_state.is_tracking or st.session_state.get("room_id"):
     onlives_data = get_onlives_rooms()
     target_room_info = onlives_data.get(int(st.session_state.room_id)) if st.session_state.room_id.isdigit() else None
 
@@ -603,7 +602,8 @@ if st.session_state.is_tracking:
     is_live_now = int(st.session_state.room_id) in onlives_data
 
     if not is_live_now:
-        st.warning("📡 配信が終了しました。全ログを最終保存します。")
+        # st.warning("📡 配信が終了しました。全ログを最終保存します。")
+        st.info("📡 配信の終了を確認しました。未保存のログを含め、最終データを保存します。")
 
         # 1. コメントログ保存
         if st.session_state.comment_log:
@@ -655,13 +655,14 @@ if st.session_state.is_tracking:
             free_gift_df.to_csv(buf, index=False, encoding="utf-8-sig")
             upload_csv_to_ftp(f"free_gift_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv", buf)
 
-        # 状態変更とリロード
-        st.session_state.is_tracking = False
-        st.info("✅ 配信終了を検知し、すべてのログを保存しました。トラッキングを停止します。")
-        st.rerun()
+        # 配信が終了しても、表示用のフラグを「停止」にせず、警告を出すだけにする
+        # st.session_state.is_tracking = False  # 消去またはコメントアウト
+        # st.warning("📡 配信が終了しました。ログを最終保存しました。このまま振り返りが可能です。")
+        st.success("✅ 最終保存が完了しました。このままデータの確認や手動ダウンロードが可能です。")
+        # st.rerun()  # 消去またはコメントアウト
 
 
-    if target_room_info:
+    if target_room_info or st.session_state.get("room_id"):
         room_id = st.session_state.room_id
 
         # ルーム名取得
@@ -674,11 +675,24 @@ if st.session_state.is_tracking:
         room_url_key = prof.get("room_url_key", "")
         room_url = f"https://www.showroom-live.com/r/{room_url_key}" if room_url_key else f"https://www.showroom-live.com/room/profile?room_id={room_id}"
         link_html = f'<a href="{room_url}" target="_blank" style="font-weight:bold; text-decoration:underline; color:inherit;">{room_name}</a>'
-        st.markdown(f'<div class="tracking-success">{link_html} の配信をトラッキング中です！</div>', unsafe_allow_html=True)
+        # 配信状態によってメッセージを切り替える
+        if is_live_now:
+            # 配信中のみ緑色の枠を表示
+            st.markdown(f'<div class="tracking-success">📡 {link_html} の配信をトラッキング中です。</div>', unsafe_allow_html=True)
+        else:
+            # 配信終了後は別のデザイン（または枠なし）にして、矛盾をなくす
+            st.markdown(f'<div style="padding:10px; border-radius:5px; background-color:#f0f2f6; border-left:5px solid #ff4b4b; color:#31333f;">🏁 {link_html} の配信は終了しました。</div>', unsafe_allow_html=True)
 
-        st_autorefresh(interval=10000, limit=None, key="dashboard_refresh")
-        st.session_state.comment_log = get_and_update_log("comment", st.session_state.room_id)
-        st.session_state.gift_log = get_and_update_log("gift", st.session_state.room_id)
+
+        # 配信中の時だけ自動更新し、新しいログを取得しにいく
+        if is_live_now:
+            st_autorefresh(interval=10000, limit=None, key="dashboard_refresh")
+            st.session_state.comment_log = get_and_update_log("comment", st.session_state.room_id)
+            st.session_state.gift_log = get_and_update_log("gift", st.session_state.room_id)
+        else:
+            # 配信終了後は更新を止め、最終保存されたログを表示し続けるだけにする
+            st.info("配信が終了したため、自動更新を停止しました。現在のログを保持しています。")
+
         import math
 
         # コメントログ自動保存
@@ -771,7 +785,7 @@ if st.session_state.is_tracking:
                         "user_id": raw_data.get("u")
                     }
                     st.session_state.system_msg_log.insert(0, new_sys_entry)
-                    st.session_state.system_msg_log = st.session_state.system_msg_log[:200]
+                    # st.session_state.system_msg_log = st.session_state.system_msg_log[:200]
 
                 # --- 🎁 B. 無償ギフト (t: 2) の処理 ---
                 elif m_type == "2":
@@ -801,7 +815,7 @@ if st.session_state.is_tracking:
                         "image": gift_info.get("image", "")
                     }
                     st.session_state.free_gift_log.insert(0, new_entry)
-                    st.session_state.free_gift_log = st.session_state.free_gift_log[:200]
+                    # st.session_state.free_gift_log = st.session_state.free_gift_log[:200]
 
             except Exception as e:
                 # ここで print しておけば、アプリを止めずにコンソールで原因を確認できます
@@ -977,23 +991,51 @@ if st.session_state.is_tracking:
                     st.info("無償ギフトはまだありません。")
 
         with col_fan:
-            st.markdown("###### 🧡 システムMSG") # タイトル変更
+            st.markdown("###### 🧡 システムMSG") 
             with st.container(border=True, height=500):
-                # ✅ システムメッセージの表示
                 if st.session_state.get("system_msg_log"):
                     for log in st.session_state.system_msg_log:
                         created_at = datetime.datetime.fromtimestamp(log.get('created_at', 0), JST).strftime("%H:%M:%S")
                         msg_text = log.get('message', '')
                         
-                        # paddingを削除し、class="comment-item"を付与して高さを統一
+                        # --- 💡 ハイライト判定ロジック（優先順位順） ---
+                        bg_color = "transparent"
+                        border_color = "transparent"
+
+                        # 1. 〇〇回目の訪問 (最優先・最も目立つ)
+                        if "回目の訪問" in msg_text:
+                            bg_color = "#ffebee"  # 薄い赤（お祝い感）
+                            border_color = "#ffcdd2"
+                        
+                        # 2. 初訪問 (次に目立つ)
+                        elif "初訪問" in msg_text:
+                            bg_color = "#e3f2fd"  # 薄い青（フレッシュな印象）
+                            border_color = "#bbdefb"
+
+                        # 3. 2度目の訪問
+                        elif "2度目の訪問" in msg_text:
+                            bg_color = "#f5f5f5"  # ごく薄いグレー
+                            border_color = "#eeeeee"
+
+                        # 4. ファンレベル上昇 (Lv10: 暖色 / Lv9: 同系統の薄い色)
+                        elif "ファンレベルが10に" in msg_text:
+                            bg_color = "#fff3cd"  # ゴールド（ファン化）
+                            border_color = "#ffeeba"
+                        elif "ファンレベルが9に" in msg_text:
+                            bg_color = "#fff9e6"  # さらに薄いイエロー（リーチ）
+                            border_color = "#fff3cd"
+                        
+                        # スタイルの組み立て
+                        style = f"background-color: {bg_color}; border: 1px solid {border_color}; padding: 0px 8px 4px 8px; border-radius: 4px; margin-bottom: 2px;"
+                        
                         html = f"""
-                        <div class="comment-item">
+                        <div class="comment-item" style="{style}">
                             <div class="comment-time">{created_at}</div>
                             <div style="color: #FF6C1A; font-weight: bold; font-size: 0.85em; line-height: 1.4; margin-top: 2px;">
                                 {msg_text}
                             </div>
                         </div>
-                        <hr style="border: none; border-top: 1px solid #eee; margin: 8px 0;">
+                        <hr style="border: none; border-top: 1px solid #eee; margin: 4px 0;">
                         """
                         st.markdown(html, unsafe_allow_html=True)
                 else:
@@ -1003,7 +1045,8 @@ if st.session_state.is_tracking:
         st.session_state.is_tracking = False
 
 
-if st.session_state.is_tracking and st.session_state.room_id:
+# if st.session_state.is_tracking and st.session_state.room_id:
+if st.session_state.get("room_id"):
 
     st.markdown("---")
     st.markdown("<h2 style='font-size:2em;'>📝 ログ詳細</h2>", unsafe_allow_html=True)
@@ -1013,12 +1056,12 @@ if st.session_state.is_tracking and st.session_state.room_id:
     st.markdown(
         f"<p style='font-size:12px; color:#a1a1a1;'>"
         f"※データは現在 {len(st.session_state.comment_log)} 件のコメント、"
-        f"{sys_msg_count} 件のシステムMSG、" # 追加
         f"{len(st.session_state.gift_log)} 件のスペシャルギフト、"
         f"{len(st.session_state.free_gift_log)} 件の無償ギフト、"
+        f"{sys_msg_count} 件のシステムMSG、" # 追加
         f"および {st.session_state.total_fan_count} 名のファンのデータが蓄積されています。<br />"
         f"※誤ってリロード（再読み込み）してしまった、閉じてしまった等でダウンロードせずに消失してしまった場合、"
-        f"24時間以内に運営にご相談いただければ、復元・ログ取得できる可能性があります。<br />"
+        f"運営にご相談いただければ、コメント、スペシャルギフトに関しては、ログ取得できる可能性があります。<br />"
         f"※各タブを選択し、必要に応じて「＞」で詳細を展開してください。</p>", 
         unsafe_allow_html=True
     )
