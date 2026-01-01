@@ -1068,7 +1068,7 @@ if st.session_state.is_tracking or st.session_state.get("room_id"):
                                 {msg_text}
                             </div>
                         </div>
-                        <hr style="border: none; border-top: 1px solid #eee; margin: 4px 0;">
+                        <hr style="border: none; border-top: 1px solid #eee; margin: 8px 0;">
                         """
                         st.markdown(html, unsafe_allow_html=True)
                 else:
