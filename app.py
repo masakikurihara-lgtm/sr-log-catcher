@@ -252,6 +252,17 @@ CSS_STYLE = """
     position: relative; 
     z-index: 9999;      /* 強制的に一番手前に表示させる */
 }
+/* 配信終了用（追加：色とボーダー以外は全て同じ） */
+.tracking-info {
+    background-color: #f0f2f6; /* 終了とわかるグレー系 */
+    color: #333333;
+    padding: 1rem;
+    border-left: 5px solid #ff4b4b; /* 終了を示す赤色の線 */
+    margin-bottom: -36px !important;
+    margin-top: 0 !important;
+    position: relative; 
+    z-index: 9999;
+}
 </style>
 """
 st.markdown(CSS_STYLE, unsafe_allow_html=True)
@@ -586,6 +597,7 @@ if st.button("トラッキング停止", key="stop_button", disabled=not st.sess
         save_log_to_ftp("comment")
         save_log_to_ftp("gift")
         save_log_to_ftp("free_gift")
+        save_log_to_ftp("system_msg")
 
     st.session_state.is_tracking = False
     st.session_state.room_info = None
@@ -655,10 +667,25 @@ if st.session_state.is_tracking or st.session_state.get("room_id"):
             free_gift_df.to_csv(buf, index=False, encoding="utf-8-sig")
             upload_csv_to_ftp(f"free_gift_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv", buf)
 
+        # 4. システムメッセージログ保存（追加）
+        if st.session_state.system_msg_log:
+            system_msg_df = pd.DataFrame([
+                {
+                    "時間": datetime.datetime.fromtimestamp(log.get("created_at", 0), JST).strftime("%Y-%m-%d %H:%M:%S"),
+                    "メッセージ": log.get("message", ""),
+                    "ユーザーID": log.get("user_id", "")
+                }
+                for log in st.session_state.system_msg_log
+            ])
+            buf = io.BytesIO()
+            system_msg_df.to_csv(buf, index=False, encoding="utf-8-sig")
+            upload_csv_to_ftp(f"system_msg_log_{st.session_state.room_id}_{datetime.datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv", buf)
+
         # 配信が終了しても、表示用のフラグを「停止」にせず、警告を出すだけにする
         # st.session_state.is_tracking = False  # 消去またはコメントアウト
         # st.warning("📡 配信が終了しました。ログを最終保存しました。このまま振り返りが可能です。")
-        st.success("✅ 最終保存が完了しました。このままデータの確認や手動ダウンロードが可能です。")
+        # st.success("✅ 最終保存が完了しました。このままデータの確認や手動ダウンロードが可能です。")
+        st.success("✅ 最終保存が完了しました。自動更新を停止し、現在のログを保持しています。このままデータの確認やダウンロードが可能です。")
         # st.rerun()  # 消去またはコメントアウト
 
 
@@ -674,15 +701,14 @@ if st.session_state.is_tracking or st.session_state.get("room_id"):
         # URLキー取得
         room_url_key = prof.get("room_url_key", "")
         room_url = f"https://www.showroom-live.com/r/{room_url_key}" if room_url_key else f"https://www.showroom-live.com/room/profile?room_id={room_id}"
-        link_html = f'<a href="{room_url}" target="_blank" style="font-weight:bold; text-decoration:underline; color:inherit;">{room_name}</a>'
+        link_html = f'<a href="{room_url}" target="_blank" style="font-weight:bold; text-decoration:underline; color:inherit;">{room_name}</a>'        
         # 配信状態によってメッセージを切り替える
         if is_live_now:
-            # 配信中のみ緑色の枠を表示
+            # 配信中（緑色）
             st.markdown(f'<div class="tracking-success">📡 {link_html} の配信をトラッキング中です。</div>', unsafe_allow_html=True)
         else:
-            # 配信終了後は別のデザイン（または枠なし）にして、矛盾をなくす
-            st.markdown(f'<div style="padding:10px; border-radius:5px; background-color:#f0f2f6; border-left:5px solid #ff4b4b; color:#31333f;">🏁 {link_html} の配信は終了しました。</div>', unsafe_allow_html=True)
-
+            # 💡 ここを直接書き込みから「クラス指定」に変更します
+            st.markdown(f'<div class="tracking-info">🏁 {link_html} の配信は終了しました。</div>', unsafe_allow_html=True)
 
         # 配信中の時だけ自動更新し、新しいログを取得しにいく
         if is_live_now:
@@ -690,8 +716,9 @@ if st.session_state.is_tracking or st.session_state.get("room_id"):
             st.session_state.comment_log = get_and_update_log("comment", st.session_state.room_id)
             st.session_state.gift_log = get_and_update_log("gift", st.session_state.room_id)
         else:
-            # 配信終了後は更新を止め、最終保存されたログを表示し続けるだけにする
-            st.info("配信が終了したため、自動更新を停止しました。現在のログを保持しています。")
+            # 💡 ここにあった st.info を削除（またはコメントアウト）します
+            # st.info("配信が終了したため、自動更新を停止しました。現在のログを保持しています。")
+            pass
 
         import math
 
@@ -1061,7 +1088,7 @@ if st.session_state.get("room_id"):
         f"{sys_msg_count} 件のシステムMSG、" # 追加
         f"および {st.session_state.total_fan_count} 名のファンのデータが蓄積されています。<br />"
         f"※誤ってリロード（再読み込み）してしまった、閉じてしまった等でダウンロードせずに消失してしまった場合、"
-        f"運営にご相談いただければ、コメント、スペシャルギフトに関しては、ログ取得できる可能性があります。<br />"
+        f"運営にご相談いただければ、ログ取得できる可能性があります。<br />"
         f"※各タブを選択し、必要に応じて「＞」で詳細を展開してください。</p>", 
         unsafe_allow_html=True
     )
