@@ -1046,7 +1046,7 @@ if st.session_state.is_tracking or st.session_state.get("room_id"):
 
                         # 4. フォロー通知 (追加箇所)
                         elif "フォローしました" in msg_text:
-                            bg_color = "#fce4ec"  # 薄いピンク
+                            bg_color = "#e8f5e9"  # 薄い緑（新規アクション感）
                             # border_color = "#f8bbd0"
 
                         # 5. ファンレベル上昇 (Lv10: 暖色 / Lv9: 同系統の薄い色)
@@ -1064,7 +1064,7 @@ if st.session_state.is_tracking or st.session_state.get("room_id"):
                         html = f"""
                         <div class="comment-item" style="{style}">
                             <div class="comment-time">{created_at}</div>
-                            <div style="color: #FF6C1A; font-weight: bold; font-size: 0.85em; line-height: 1.4; margin-top: 2px;">
+                            <div style="color: #FF6C1A; font-weight: bold; font-size: 0.9em; line-height: 1.5; margin-top: 2px;">
                                 {msg_text}
                             </div>
                         </div>
