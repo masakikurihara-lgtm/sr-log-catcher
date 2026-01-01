@@ -1032,28 +1032,34 @@ if st.session_state.is_tracking or st.session_state.get("room_id"):
                         # 1. 〇〇回目の訪問 (最優先・最も目立つ)
                         if "回目の訪問" in msg_text:
                             bg_color = "#ffebee"  # 薄い赤（お祝い感）
-                            border_color = "#ffcdd2"
+                            # border_color = "#ffcdd2"
                         
                         # 2. 初訪問 (次に目立つ)
                         elif "初訪問" in msg_text:
                             bg_color = "#e3f2fd"  # 薄い青（フレッシュな印象）
-                            border_color = "#bbdefb"
+                            # border_color = "#bbdefb"
 
                         # 3. 2度目の訪問
                         elif "2度目の訪問" in msg_text:
                             bg_color = "#f5f5f5"  # ごく薄いグレー
-                            border_color = "#eeeeee"
+                            # border_color = "#eeeeee"
 
-                        # 4. ファンレベル上昇 (Lv10: 暖色 / Lv9: 同系統の薄い色)
+                        # 4. フォロー通知 (追加箇所)
+                        elif "フォローしました" in msg_text:
+                            bg_color = "#fce4ec"  # 薄いピンク
+                            # border_color = "#f8bbd0"
+
+                        # 5. ファンレベル上昇 (Lv10: 暖色 / Lv9: 同系統の薄い色)
                         elif "ファンレベルが10に" in msg_text:
                             bg_color = "#fff3cd"  # ゴールド（ファン化）
-                            border_color = "#ffeeba"
+                            # border_color = "#ffeeba"
                         elif "ファンレベルが9に" in msg_text:
                             bg_color = "#fff9e6"  # さらに薄いイエロー（リーチ）
-                            border_color = "#fff3cd"
+                            # border_color = "#fff3cd"
                         
                         # スタイルの組み立て
-                        style = f"background-color: {bg_color}; border: 1px solid {border_color}; padding: 0px 8px 4px 8px; border-radius: 4px; margin-bottom: 2px;"
+                        # style = f"background-color: {bg_color}; border: 1px solid {border_color}; padding: 0px 8px 4px 8px; border-radius: 4px; margin-bottom: 2px;"
+                        style = f"background-color: {bg_color}; padding: 0px 8px 4px 8px; margin-bottom: 2px;"
                         
                         html = f"""
                         <div class="comment-item" style="{style}">
